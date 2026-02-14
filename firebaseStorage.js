@@ -9,21 +9,22 @@ let bucket = null;
 // Initialize Firebase with service account
 const initializeFirebase = () => {
   try {
-    // Parse the service account from environment variable
-    // Handle escaped newlines in the environment variable
-    const serviceAccountJson = (process.env.FIREBASE_SERVICE_ACCOUNT || '').replace(/\\n/g, '\n');
-    const serviceAccount = JSON.parse(serviceAccountJson);
+    // Get Firebase config from separate environment variables
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
     
-    if (!serviceAccount.private_key) {
-      console.warn('Firebase service account not configured');
+    if (!projectId || !clientEmail || !privateKey) {
+      console.warn('Firebase credentials not configured');
+      console.warn('Required: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
       return false;
     }
     
-    // Validate required fields
-    if (!serviceAccount.project_id) {
-      console.error('Firebase service account missing project_id');
-      return false;
-    }
+    const serviceAccount = {
+      projectId,
+      clientEmail,
+      privateKey
+    };
     
     initializeApp({
       credential: cert(serviceAccount),
