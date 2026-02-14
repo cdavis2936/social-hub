@@ -18,7 +18,6 @@ const mongoose = require('mongoose');
 const { Queue } = require('bullmq');
 const IORedis = require('ioredis');
 const { normalizeCaption, processReelJob } = require('./reelProcessor');
-const s3Storage = require('./s3Storage');
 
 // Models
 const User = require('./models/User');
@@ -86,14 +85,6 @@ const PROCESSED_DIR = path.join(UPLOAD_DIR, 'processed');
 const AVATAR_DIR = path.join(UPLOAD_DIR, 'avatars');
 for (const dir of [UPLOAD_DIR, ORIGINAL_DIR, PROCESSED_DIR, AVATAR_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
-// Initialize S3 storage (if configured)
-const s3Initialized = s3Storage.initializeS3();
-if (s3Initialized) {
-  console.log('Using S3 for file storage - uploads will be persistent across deployments');
-} else {
-  console.log('S3 not configured - using local file storage (files will be lost on redeploy)');
 }
 
 let redisConnection = null;
@@ -242,19 +233,12 @@ app.use((req, _res, next) => {
 // Handle video streaming with Range requests
 app.get('/uploads/stories/:filename', async (req, res) => {
   const filename = req.params.filename;
+  const filePath = path.join(UPLOAD_DIR, 'stories', filename);
   
   // Security check
   if (filename.includes('..')) {
     return res.status(403).json({ error: 'Invalid filename' });
   }
-
-  // If S3 is configured and this looks like an S3 URL, redirect to S3
-  if (s3Storage.isS3Configured() && (filename.startsWith('http') || filename.startsWith('https'))) {
-    // This is an S3 URL, redirect to it
-    return res.redirect(302, filename);
-  }
-
-  const filePath = path.join(UPLOAD_DIR, 'stories', filename);
   
   try {
     const stat = await fs.promises.stat(filePath);
@@ -897,22 +881,7 @@ app.post('/api/me/avatar', authMiddleware, avatarUpload.single('avatar'), async 
   const user = await User.findById(req.user.id);
   if (!user) return res.status(404).json({ error: 'user not found' });
 
-  let avatarUrl = `/uploads/avatars/${req.file.filename}`;
-
-  // If S3 is configured, upload to S3
-  if (s3Storage.isS3Configured()) {
-    try {
-      const s3Key = `avatars/${req.file.filename}`;
-      const contentType = req.file.mimetype || 'image/jpeg';
-      avatarUrl = await s3Storage.uploadToS3(req.file.path, s3Key, contentType);
-      await fs.promises.unlink(req.file.path).catch(() => null);
-      console.log('Avatar uploaded to S3:', avatarUrl);
-    } catch (err) {
-      console.error('S3 avatar upload failed, using local storage:', err);
-    }
-  }
-
-  user.avatarUrl = avatarUrl;
+  user.avatarUrl = `/uploads/avatars/${req.file.filename}`;
   await user.save();
   res.json({ user: sanitizeUser(user) });
 });
@@ -1181,27 +1150,6 @@ app.get('/api/users', authMiddleware, async (req, res) => {
   const ordered = contactIds.map((id) => byId.get(String(id))).filter(Boolean);
 
   res.json({ users: ordered.map(sanitizeUser) });
-});
-
-// Search for users by username or display name
-app.get('/api/users/search', authMiddleware, async (req, res) => {
-  const query = String(req.query.q || '').trim();
-  const myId = req.user.id;
-  
-  if (!query || query.length < 2) {
-    return res.json({ users: [] });
-  }
-  
-  // Search by username or displayName (case-insensitive)
-  const users = await User.find({
-    _id: { $ne: myId },
-    $or: [
-      { username: { $regex: query, $options: 'i' } },
-      { displayName: { $regex: query, $options: 'i' } }
-    ]
-  }).select('-passwordHash').limit(20);
-  
-  res.json({ users: users.map(sanitizeUser) });
 });
 
 app.get('/api/messages/:peerId', authMiddleware, async (req, res) => {
@@ -1604,19 +1552,6 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
 
   let mediaUrl = `/uploads/stories/${req.file.filename}`;
   let mediaType = isVideo ? 'video' : 'image';
-  const storyDir = path.join(UPLOAD_DIR, 'stories');
-
-  // If S3 is configured, upload to S3 and use S3 URL
-  if (s3Storage.isS3Configured()) {
-    try {
-      const s3Key = `stories/${req.file.filename}`;
-      const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-      mediaUrl = await s3Storage.uploadToS3(path.join(storyDir, req.file.filename), s3Key, contentType);
-      console.log('Story media uploaded to S3:', mediaUrl);
-    } catch (err) {
-      console.error('S3 upload failed, falling back to local storage:', err);
-    }
-  }
 
   if (isVideo) {
     const hasFfmpeg = await checkBinary('ffmpeg');
@@ -1624,30 +1559,16 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
       // Graceful fallback: keep original uploaded video if ffmpeg is unavailable.
       console.warn('ffmpeg missing, skipping story transcode and using original upload');
     } else {
-      const inputPath = path.join(storyDir, req.file.filename);
+      const inputPath = path.join(UPLOAD_DIR, 'stories', req.file.filename);
       const baseName = path.basename(req.file.filename, path.extname(req.file.filename));
       const outputName = `${baseName}.mp4`;
-      const outputPath = path.join(storyDir, outputName);
+      const outputPath = path.join(UPLOAD_DIR, 'stories', outputName);
 
       try {
         await transcodeStoryToMp4(inputPath, outputPath);
         await fs.promises.unlink(inputPath).catch(() => null);
         mediaUrl = `/uploads/stories/${outputName}`;
         mediaType = 'video';
-
-        // If S3 is configured, upload the transcoded video to S3
-        if (s3Storage.isS3Configured()) {
-          try {
-            const s3Key = `stories/${outputName}`;
-            mediaUrl = await s3Storage.uploadToS3(outputPath, s3Key, 'video/mp4');
-            await fs.promises.unlink(outputPath).catch(() => null);
-            console.log('Transcoded story video uploaded to S3:', mediaUrl);
-          } catch (s3Err) {
-            console.error('S3 upload for transcoded video failed:', s3Err);
-            // Fall back to local URL
-            mediaUrl = `/uploads/stories/${outputName}`;
-          }
-        }
       } catch (err) {
         // Graceful fallback: keep original uploaded video on transcode failure.
         console.error('Story transcode failed, using original upload:', err);

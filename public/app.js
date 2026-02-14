@@ -57,7 +57,6 @@ const editProfileBtn = el('editProfileBtn');
 const usersList = el('usersList');
 const userSearch = el('userSearch');
 const chatsList = el('chatsList');
-const userSearchInput = el('userSearchInput');
 const groupsList = el('groupsList');
 const createGroupBtn = el('createGroupBtn');
 const messagesEl = el('messages');
@@ -500,7 +499,6 @@ function showApp() {
   if (sidebarDescription) {
     sidebarDescription.textContent = me?.description || 'No description';
   }
-  setupUserSearch();
 }
 
 function applyAvatar(targetEl, avatarUrl, fallbackLabel = 'U') {
@@ -727,112 +725,6 @@ async function refreshUsers() {
   const data = await api('/api/users');
   users = data.users;
   renderUsers();
-}
-
-// User search functionality
-let searchTimeout = null;
-let searchResults = [];
-
-async function handleUserSearch(query) {
-  if (!query || query.length < 2) {
-    searchResults = [];
-    loadChats();
-    return;
-  }
-  
-  try {
-    const data = await api(`/api/users/search?q=${encodeURIComponent(query)}`);
-    searchResults = data.users || [];
-    renderSearchResults();
-  } catch (err) {
-    console.error('User search failed:', err);
-    searchResults = [];
-  }
-}
-
-function renderSearchResults() {
-  if (!userSearchInput || !userSearchInput.value.trim()) {
-    loadChats();
-    return;
-  }
-  
-  chatsList.innerHTML = '';
-  
-  if (searchResults.length === 0) {
-    chatsList.innerHTML = '<li class="list-empty">No users found</li>';
-    return;
-  }
-  
-  for (const u of searchResults) {
-    const li = document.createElement('li');
-    li.dataset.userId = u.id;
-    
-    const item = document.createElement('div');
-    item.className = 'list-item';
-    
-    const avatar = document.createElement('div');
-    avatar.className = 'list-item-avatar';
-    applyAvatar(avatar, u.avatarUrl, u.username.charAt(0).toUpperCase());
-    
-    const content = document.createElement('div');
-    content.className = 'list-item-content';
-    
-    const name = document.createElement('div');
-    name.className = 'list-item-name';
-    name.textContent = u.displayName ? `${u.displayName} (@${u.username})` : `@${u.username}`;
-    
-    const preview = document.createElement('span');
-    preview.className = 'list-item-preview';
-    preview.textContent = 'Click to start chat';
-    
-    const online = document.createElement('span');
-    online.className = 'online-indicator';
-    online.style.color = onlineUsers.has(u.id) ? '#00a884' : '#667781';
-    online.textContent = onlineUsers.has(u.id) ? '● Online' : '○ Offline';
-    
-    content.appendChild(name);
-    content.appendChild(preview);
-    content.appendChild(online);
-    item.appendChild(avatar);
-    item.appendChild(content);
-    li.appendChild(item);
-    
-    li.onclick = () => selectPeer(u);
-    chatsList.appendChild(li);
-  }
-}
-
-// Set up user search input handler
-function setupUserSearch() {
-  if (!userSearchInput) return;
-  if (userSearchInput.dataset.setup) return;
-  userSearchInput.dataset.setup = 'true';
-  
-  userSearchInput.addEventListener('input', (e) => {
-    const query = e.target.value.trim();
-    
-    // Clear previous timeout
-    if (searchTimeout) clearTimeout(searchTimeout);
-    
-    if (!query) {
-      searchResults = [];
-      loadChats();
-      return;
-    }
-    
-    // Debounce search
-    searchTimeout = setTimeout(() => {
-      handleUserSearch(query);
-    }, 300);
-  });
-  
-  userSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      userSearchInput.value = '';
-      searchResults = [];
-      loadChats();
-    }
-  });
 }
 
 function renderUsers() {

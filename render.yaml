@@ -13,12 +13,3 @@ services:
         value: redis://default:POHokUIGlxgjAKIoZIP81oqtSQygsOHo@redis-12461.c61.us-east-1-3.ec2.cloud.redislabs.com:12461
       - key: PUBLIC_BASE_URL
         value: https://social-hub-1-brnh.onrender.com
-      # Uncomment and configure S3 for persistent file storage
-      # - key: AWS_ACCESS_KEY_ID
-      #   value: your_aws_access_key
-      # - key: AWS_SECRET_ACCESS_KEY
-      #   value: your_aws_secret_access_key
-      # - key: AWS_REGION
-      #   value: us-east-1
-      # - key: AWS_S3_BUCKET
-      #   value: your_bucket_name
