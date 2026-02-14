@@ -735,8 +735,15 @@ let searchResults = [];
 
 async function handleUserSearch(query) {
   if (!query || query.length < 2) {
-    searchResults = [];
-    loadChats();
+    // Show all users when search is empty
+    try {
+      const data = await api('/api/users/search');
+      searchResults = data.users || [];
+      renderSearchResults();
+    } catch (err) {
+      console.error('User search failed:', err);
+      searchResults = [];
+    }
     return;
   }
   
@@ -751,7 +758,8 @@ async function handleUserSearch(query) {
 }
 
 function renderSearchResults() {
-  if (!userSearchInput || !userSearchInput.value.trim()) {
+  // If no search query and no results, show regular chat list
+  if ((!userSearchInput || !userSearchInput.value.trim()) && searchResults.length === 0) {
     loadChats();
     return;
   }
@@ -808,6 +816,9 @@ function setupUserSearch() {
   if (userSearchInput.dataset.setup) return;
   userSearchInput.dataset.setup = 'true';
   
+  // Load all users initially
+  handleUserSearch('');
+  
   userSearchInput.addEventListener('input', (e) => {
     const query = e.target.value.trim();
     
@@ -815,8 +826,8 @@ function setupUserSearch() {
     if (searchTimeout) clearTimeout(searchTimeout);
     
     if (!query) {
-      searchResults = [];
-      loadChats();
+      // Show all users when search is cleared
+      handleUserSearch('');
       return;
     }
     
@@ -829,8 +840,7 @@ function setupUserSearch() {
   userSearchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       userSearchInput.value = '';
-      searchResults = [];
-      loadChats();
+      handleUserSearch('');
     }
   });
 }

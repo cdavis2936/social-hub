@@ -1214,19 +1214,17 @@ app.get('/api/users/search', authMiddleware, async (req, res) => {
   const query = String(req.query.q || '').trim();
   const myId = req.user.id;
   
-  if (!query || query.length < 2) {
-    return res.json({ users: [] });
-  }
+  // If no query, return all users except yourself
+  const filter = { _id: { $ne: myId } };
   
-  // Search by username or displayName (case-insensitive)
-  const users = await User.find({
-    _id: { $ne: myId },
-    $or: [
+  if (query && query.length >= 2) {
+    filter.$or = [
       { username: { $regex: query, $options: 'i' } },
       { displayName: { $regex: query, $options: 'i' } }
-    ]
-  }).select('-passwordHash').limit(20);
+    ];
+  }
   
+  const users = await User.find(filter).select('-passwordHash').limit(50);
   res.json({ users: users.map(sanitizeUser) });
 });
 
