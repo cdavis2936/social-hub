@@ -18,6 +18,7 @@ const mongoose = require('mongoose');
 const { Queue } = require('bullmq');
 const IORedis = require('ioredis');
 const { normalizeCaption, processReelJob } = require('./reelProcessor');
+const mongoStorage = require('./mongoStorage');
 
 // Models
 const User = require('./models/User');
@@ -233,12 +234,13 @@ app.use((req, _res, next) => {
 // Handle video streaming with Range requests
 app.get('/uploads/stories/:filename', async (req, res) => {
   const filename = req.params.filename;
-  const filePath = path.join(UPLOAD_DIR, 'stories', filename);
   
   // Security check
   if (filename.includes('..')) {
     return res.status(403).json({ error: 'Invalid filename' });
   }
+
+  const filePath = path.join(UPLOAD_DIR, 'stories', filename);
   
   try {
     const stat = await fs.promises.stat(filePath);
@@ -276,6 +278,47 @@ app.get('/uploads/stories/:filename', async (req, res) => {
   } catch (err) {
     console.error('Video streaming error:', err);
     res.status(404).json({ error: 'Video not found' });
+  }
+});
+
+// Serve files from GridFS
+app.get('/api/files/:fileId', async (req, res) => {
+  const fileId = req.params.fileId;
+  
+  if (!mongoStorage.isGridFSReady()) {
+    return res.status(404).json({ error: 'File storage not available' });
+  }
+
+  try {
+    const bucket = mongoStorage.getBucket();
+    const ObjectId = require('mongoose').Types.ObjectId;
+    const fileObjectId = new ObjectId(fileId);
+    
+    // Check if file exists
+    const files = await bucket.find({ _id: fileObjectId }).toArray();
+    if (!files || files.length === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    const file = files[0];
+    const contentType = file.metadata?.contentType || 'application/octet-stream';
+    
+    res.set('Content-Type', contentType);
+    if (contentType.startsWith('video/')) {
+      res.set('Accept-Ranges', 'bytes');
+    }
+    res.set('Access-Control-Allow-Origin', '*');
+    
+    const downloadStream = bucket.openDownloadStream(fileObjectId);
+    downloadStream.pipe(res);
+    
+    downloadStream.on('error', (err) => {
+      console.error('GridFS stream error:', err);
+      res.status(500).json({ error: 'Error streaming file' });
+    });
+  } catch (err) {
+    console.error('GridFS file error:', err);
+    res.status(404).json({ error: 'File not found' });
   }
 });
 
@@ -881,7 +924,21 @@ app.post('/api/me/avatar', authMiddleware, avatarUpload.single('avatar'), async 
   const user = await User.findById(req.user.id);
   if (!user) return res.status(404).json({ error: 'user not found' });
 
-  user.avatarUrl = `/uploads/avatars/${req.file.filename}`;
+  let avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+  // Upload to GridFS for persistence
+  if (mongoStorage.isGridFSReady()) {
+    try {
+      const result = await mongoStorage.uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype);
+      avatarUrl = result.url; // Use GridFS URL
+      await fs.promises.unlink(req.file.path).catch(() => null);
+      console.log('Avatar uploaded to GridFS:', result.id);
+    } catch (err) {
+      console.error('GridFS avatar upload failed, using local storage:', err);
+    }
+  }
+
+  user.avatarUrl = avatarUrl;
   await user.save();
   res.json({ user: sanitizeUser(user) });
 });
@@ -1573,6 +1630,21 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
 
   let mediaUrl = `/uploads/stories/${req.file.filename}`;
   let mediaType = isVideo ? 'video' : 'image';
+  let gridFsFileId = null;
+
+  // Upload to GridFS for persistence
+  if (mongoStorage.isGridFSReady()) {
+    try {
+      const filePath = path.join(UPLOAD_DIR, 'stories', req.file.filename);
+      const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+      const result = await mongoStorage.uploadToGridFS(filePath, req.file.filename, contentType);
+      gridFsFileId = result.id;
+      mediaUrl = result.url; // Use GridFS URL
+      console.log('Story media uploaded to GridFS:', result.id);
+    } catch (err) {
+      console.error('GridFS upload failed, using local storage:', err);
+    }
+  }
 
   if (isVideo) {
     const hasFfmpeg = await checkBinary('ffmpeg');
@@ -1590,6 +1662,21 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
         await fs.promises.unlink(inputPath).catch(() => null);
         mediaUrl = `/uploads/stories/${outputName}`;
         mediaType = 'video';
+
+        // Upload transcoded video to GridFS
+        if (mongoStorage.isGridFSReady() && gridFsFileId) {
+          try {
+            await mongoStorage.deleteFromGridFS(gridFsFileId); // Delete original
+            const result = await mongoStorage.uploadToGridFS(outputPath, outputName, 'video/mp4');
+            gridFsFileId = result.id;
+            mediaUrl = result.url;
+            await fs.promises.unlink(outputPath).catch(() => null);
+            console.log('Transcoded video uploaded to GridFS:', result.id);
+          } catch (err) {
+            console.error('GridFS upload for transcoded video failed:', err);
+            mediaUrl = `/uploads/stories/${outputName}`;
+          }
+        }
       } catch (err) {
         // Graceful fallback: keep original uploaded video on transcode failure.
         console.error('Story transcode failed, using original upload:', err);
@@ -2982,6 +3069,9 @@ async function startServer() {
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/social_app', mongoOptions);
     console.log('Connected to MongoDB');
+    
+    // Initialize GridFS for file storage
+    mongoStorage.initializeGridFS(mongoose.connection.db);
     
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);
