@@ -1,3 +1,4 @@
+const admin = require('firebase-admin');
 const { initializeApp, cert } = require('firebase-admin/storage');
 const { getStorage } = require('firebase-admin/storage');
 
@@ -12,7 +13,7 @@ const initializeFirebase = () => {
     // Get Firebase config from separate environment variables
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
     
     if (!projectId || !clientEmail || !privateKey) {
       console.warn('Firebase credentials not configured');
@@ -20,17 +21,15 @@ const initializeFirebase = () => {
       return false;
     }
     
-    const serviceAccount = {
-      projectId,
-      clientEmail,
-      privateKey
-    };
-    
-    initializeApp({
-      credential: cert(serviceAccount),
-      storageBucket: BUCKET_NAME
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, '\n'),
+      }),
+      storageBucket: `${projectId}.appspot.com`,
     });
-    
+
     bucket = getStorage().bucket();
     console.log('Firebase Storage initialized:', BUCKET_NAME);
     return true;
