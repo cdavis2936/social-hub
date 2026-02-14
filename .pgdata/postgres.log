@@ -1,0 +1,18 @@
+2026-02-11 15:56:27.075 EAT [154013] LOG:  starting PostgreSQL 14.19 (Ubuntu 14.19-0ubuntu0.22.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 11.4.0-1ubuntu1~22.04.2) 11.4.0, 64-bit
+2026-02-11 15:56:27.075 EAT [154013] LOG:  listening on IPv4 address "127.0.0.1", port 5433
+2026-02-11 15:56:27.078 EAT [154013] FATAL:  could not create lock file "/var/run/postgresql/.s.PGSQL.5433.lock": Permission denied
+2026-02-11 15:56:27.081 EAT [154013] LOG:  database system is shut down
+2026-02-11 15:57:17.062 EAT [154586] LOG:  starting PostgreSQL 14.19 (Ubuntu 14.19-0ubuntu0.22.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 11.4.0-1ubuntu1~22.04.2) 11.4.0, 64-bit
+2026-02-11 15:57:17.063 EAT [154586] LOG:  listening on IPv4 address "127.0.0.1", port 5433
+2026-02-11 15:57:17.070 EAT [154586] LOG:  listening on Unix socket "/home/davis/xx/.pgdata/.s.PGSQL.5433"
+2026-02-11 15:57:17.076 EAT [154587] LOG:  database system was shut down at 2026-02-11 15:56:26 EAT
+2026-02-11 15:57:17.087 EAT [154586] LOG:  database system is ready to accept connections
+2026-02-11 15:57:17.146 EAT [154596] FATAL:  database "davis" does not exist
+2026-02-11 15:57:17.158 EAT [154597] FATAL:  database "davis" does not exist
+2026-02-11 15:58:22.826 EAT [155330] FATAL:  database "davis" does not exist
+2026-02-11 15:59:44.372 EAT [156082] FATAL:  lock file "postmaster.pid" already exists
+2026-02-11 15:59:44.372 EAT [156082] HINT:  Is another postmaster (PID 154586) running in data directory "/home/davis/xx/.pgdata"?
+2026-02-11 16:04:53.642 EAT [154586] LOG:  received smart shutdown request
+2026-02-11 16:04:53.650 EAT [154586] LOG:  background worker "logical replication launcher" (PID 154593) exited with exit code 1
+2026-02-11 16:04:53.659 EAT [154588] LOG:  shutting down
+2026-02-11 16:04:53.698 EAT [154586] LOG:  database system is shut down

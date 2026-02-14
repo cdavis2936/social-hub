@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Social Hub</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link href="http://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Auth Section -->
+    <section id="authSection" class="auth-screen">
+      <div class="auth-container">
+        <div class="auth-header">
+          <div class="auth-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+            </svg>
+          </div>
+          <h1>Social Hub</h1>
+          <p>Connect with friends instantly</p>
+        </div>
+        <form id="authForm" class="auth-form">
+          <div class="form-group">
+            <input id="username" placeholder="Username" required />
+          </div>
+          <div class="form-group">
+            <input id="password" type="password" placeholder="Password" required />
+          </div>
+          <button type="submit" data-action="login" class="btn btn-primary btn-full">
+            Sign In
+          </button>
+          <button type="submit" data-action="register" class="btn btn-secondary btn-full">
+            Create Account
+          </button>
+          <p id="authStatus" class="auth-status"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Main App -->
+    <section id="appSection" class="app-screen hidden">
+      <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="user-profile" id="currentUserProfile">
+              <div class="avatar" id="sidebarAvatar">U</div>
+              <div class="user-info">
+                <span id="sidebarUsername">User</span>
+                <span id="sidebarDescription" style="font-size:12px;color:#667781;">No description</span>
+              </div>
+              <button id="editProfileBtn" class="action-btn" type="button" title="Edit Profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9"></path>
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="settingsPanel" style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#667781;">
+              <label style="display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" id="notifToggle" />
+                Notify
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" id="soundToggle" />
+                Sound
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" id="vibrateToggle" />
+                Vibrate
+              </label>
+            </div>
+          </div>
+          <div class="sidebar-tabs">
+            <button class="tab active" data-tab="chats">Chats</button>
+            <button class="tab" data-tab="users">Users</button>
+            <button class="tab" data-tab="groups">Groups</button>
+            <button class="tab" data-tab="posts">Posts</button>
+            <button class="tab" data-tab="explore">Explore</button>
+            <button class="tab" data-tab="stories">Stories</button>
+            <button class="tab" data-tab="reels">Reels</button>
+            <button class="tab" data-tab="calls">Calls</button>
+          </div>
+          <div class="sidebar-content">
+            <!-- Users List -->
+            <div id="usersTab" class="tab-content hidden">
+              <div class="search-box">
+                <input type="text" placeholder="Search users..." id="userSearch" />
+              </div>
+              <ul id="usersList" class="list"></ul>
+            </div>
+            <!-- Chats List -->
+            <div id="chatsTab" class="tab-content">
+              <ul id="chatsList" class="list">
+                <li class="list-empty">No chats yet. Select a user to start chatting!</li>
+              </ul>
+            </div>
+            <!-- Groups Tab -->
+            <div id="groupsTab" class="tab-content hidden">
+              <div class="search-box" style="display:flex;gap:8px;">
+                <button id="createGroupBtn" class="btn btn-secondary" type="button">+ New Group</button>
+              </div>
+              <ul id="groupsList" class="list"></ul>
+            </div>
+            <!-- Posts Tab -->
+            <div id="postsTab" class="tab-content hidden">
+              <div class="search-box" style="display:flex;gap:8px;">
+                <button id="createPostBtn" class="btn btn-secondary" type="button" style="flex:1;">+ New Post</button>
+              </div>
+              <div id="postsFeed" class="posts-feed"></div>
+            </div>
+            <!-- Explore Tab -->
+            <div id="exploreTab" class="tab-content hidden">
+              <div class="search-box">
+                <input type="text" id="exploreSearch" placeholder="Search users, hashtags, locations..." />
+              </div>
+              <div class="trending-section" id="trendingSection" style="padding:12px;border-bottom:1px solid var(--whatsapp-border);">
+                <div class="section-label" style="font-weight:600;margin-bottom:8px;">Trending</div>
+                <div id="trendingHashtags" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+              </div>
+              <div id="exploreResults" class="explore-grid"></div>
+            </div>
+            <!-- Stories Tab -->
+            <div id="storiesTab" class="tab-content hidden">
+              <div class="story-create">
+                <label for="storyUpload" class="story-add-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="16"></line>
+                    <line x1="8" y1="12" x2="16" y2="12"></line>
+                  </svg>
+                  <span>Add Story</span>
+                </label>
+                <input type="file" id="storyUpload" accept="image/*,video/*" style="display:none" multiple />
+                <input type="text" id="storyCaption" placeholder="Caption..." class="story-caption-input" />
+              </div>
+              <!-- Highlights Section -->
+              <div id="highlightsSection" class="stories-section hidden">
+                <div class="section-label">Highlights</div>
+                <div id="highlightsList" class="stories-grid"></div>
+              </div>
+              <!-- My Stories Section -->
+              <div id="myStoriesSection" class="stories-section hidden">
+                <div class="section-label">My Stories</div>
+                <div id="myStoriesList" class="stories-grid"></div>
+              </div>
+              <!-- All Stories Section -->
+              <div id="allStoriesSection" class="stories-section">
+                <div class="section-label">All Stories</div>
+                <div class="stories-list" id="storiesList"></div>
+              </div>
+            </div>
+            <!-- Reels Tab -->
+            <div id="reelsTab" class="tab-content hidden">
+              <div class="reels-grid" id="reelsSidebarFeed"></div>
+            </div>
+            <!-- Calls Tab -->
+            <div id="callsTab" class="tab-content hidden">
+              <div class="call-filters" style="display:flex;gap:8px;margin-bottom:12px;">
+                <button class="btn btn-secondary" data-filter="all" style="flex:1;font-size:12px;">All</button>
+                <button class="btn btn-secondary" data-filter="missed" style="flex:1;font-size:12px;">Missed</button>
+                <button class="btn btn-secondary" data-filter="answered" style="flex:1;font-size:12px;">Answered</button>
+              </div>
+              <ul id="callsList" class="list"></ul>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Chat Area -->
+        <main class="chat-area">
+          <!-- No Chat Selected -->
+          <div id="noChatSelected" class="no-chat">
+            <div class="no-chat-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+            </div>
+            <h2>Social Hub</h2>
+            <p>Select a user to start messaging</p>
+          </div>
+
+          <!-- Active Chat -->
+          <div id="activeChat" class="active-chat hidden">
+            <div class="chat-header">
+              <button id="backToChatsBtn" class="action-btn back-btn" title="Back">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+              </button>
+              <div class="chat-user-info" id="chatUserInfo">
+                <div class="avatar" id="chatAvatar">U</div>
+                <div class="chat-user-details">
+                  <span id="chatUsername">Username</span>
+                  <span id="chatStatus" class="online-status"></span>
+                </div>
+              </div>
+              <div class="chat-actions">
+                <button id="voiceCallBtn" class="action-btn" title="Voice Call">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                  </svg>
+                </button>
+                <button id="videoCallBtn" class="action-btn" title="Video Call">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                  </svg>
+                </button>
+                <button id="searchBtn" class="action-btn" title="Search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </button>
+                <button id="pinMsgBtn" class="action-btn" title="Pin Message">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="17" x2="12" y2="22"></line>
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+                  </svg>
+                </button>
+                <div style="position:relative;">
+                  <button id="chatMenuBtn" class="action-btn" title="Chat Settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="5" r="1"></circle>
+                      <circle cx="12" cy="12" r="1"></circle>
+                      <circle cx="12" cy="19" r="1"></circle>
+                    </svg>
+                  </button>
+                  <div id="chatSettingsMenu" class="hidden" style="position:absolute;right:0;top:42px;background:#fff;border:1px solid #d9d9d9;border-radius:8px;padding:8px;min-width:180px;z-index:30;box-shadow:0 4px 14px rgba(0,0,0,0.12);">
+                    <button id="muteChatBtn" class="action-btn" style="width:100%;justify-content:flex-start;">Mute</button>
+                    <button id="archiveChatBtn" class="action-btn" style="width:100%;justify-content:flex-start;">Archive</button>
+                    <button id="pinChatBtn" class="action-btn" style="width:100%;justify-content:flex-start;">Pin</button>
+                    <button id="blockUserBtn" class="action-btn" style="width:100%;justify-content:flex-start;">Block</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Search Bar -->
+            <div id="searchBar" class="search-container hidden">
+              <div class="search-input-wrapper">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="searchInput" class="search-input" placeholder="Search messages..." />
+                <button id="closeSearchBtn" class="cancel-reply">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Pinned Message -->
+            <div id="pinnedMessage" class="pinned-message hidden">
+              <div class="pinned-message-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="17" x2="12" y2="22"></line>
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+                </svg>
+                <span>Pinned Message</span>
+              </div>\n              <div class="pinned-message-text" id="pinnedText"></div>
+              <div class="pinned-message-time" id="pinnedTime"></div>
+              <button class="unpin-btn" id="unpinMsgBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div id="messages" class="messages-container"></div>
+            
+            <!-- Typing Indicator -->
+            <div id="typingIndicator" class="typing-indicator hidden">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span id="typingText">User is typing...</span>
+            </div>
+            
+            <form id="messageForm" class="message-input-area">
+              <button type="button" class="attach-btn" id="attachBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+              </button>
+              <button type="button" class="emoji-btn" id="emojiBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                  <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                  <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                </svg>
+              </button>
+              
+              <!-- Emoji Picker -->
+              <div id="emojiPicker" class="emoji-picker hidden">
+                <div class="emoji-grid">
+                  <button type="button" class="emoji-item" data-emoji="😊">😊</button>
+                  <button type="button" class="emoji-item" data-emoji="😂">😂</button>
+                  <button type="button" class="emoji-item" data-emoji="😄">😄</button>
+                  <button type="button" class="emoji-item" data-emoji="😆">😆</button>
+                  <button type="button" class="emoji-item" data-emoji="😅">😅</button>
+                  <button type="button" class="emoji-item" data-emoji="🤣">🤣</button>
+                  <button type="button" class="emoji-item" data-emoji="😊">😊</button>
+                  <button type="button" class="emoji-item" data-emoji="😇">😇</button>
+                  <button type="button" class="emoji-item" data-emoji="🥰">🥰</button>
+                  <button type="button" class="emoji-item" data-emoji="😍">😍</button>
+                  <button type="button" class="emoji-item" data-emoji="🤩">🤩</button>
+                  <button type="button" class="emoji-item" data-emoji="😘">😘</button>
+                  <button type="button" class="emoji-item" data-emoji="😋">😋</button>
+                  <button type="button" class="emoji-item" data-emoji="😛">😛</button>
+                  <button type="button" class="emoji-item" data-emoji="😜">😜</button>
+                  <button type="button" class="emoji-item" data-emoji="🤪">🤪</button>
+                  <button type="button" class="emoji-item" data-emoji="😝">😝</button>
+                  <button type="button" class="emoji-item" data-emoji="🤑">🤑</button>
+                  <button type="button" class="emoji-item" data-emoji="🤗">🤗</button>
+                  <button type="button" class="emoji-item" data-emoji="🤭">🤭</button>
+                  <button type="button" class="emoji-item" data-emoji="🤫">🤫</button>
+                  <button type="button" class="emoji-item" data-emoji="🤔">🤔</button>
+                  <button type="button" class="emoji-item" data-emoji="🤐">🤐</button>
+                  <button type="button" class="emoji-item" data-emoji="🤨">🤨</button>
+                  <button type="button" class="emoji-item" data-emoji="😐">😐</button>
+                  <button type="button" class="emoji-item" data-emoji="😑">😑</button>
+                  <button type="button" class="emoji-item" data-emoji="😶">😶</button>
+                  <button type="button" class="emoji-item" data-emoji="😏">😏</button>
+                  <button type="button" class="emoji-item" data-emoji="😒">😒</button>
+                  <button type="button" class="emoji-item" data-emoji="🙄">🙄</button>
+                  <button type="button" class="emoji-item" data-emoji="😬">😬</button>
+                  <button type="button" class="emoji-item" data-emoji="🤥">🤥</button>
+                  <button type="button" class="emoji-item" data-emoji="😌">😌</button>
+                  <button type="button" class="emoji-item" data-emoji="😔">😔</button>
+                </div>
+              </div>
+
+              <div class="attachment-popup hidden" id="attachmentPopup">
+                <button class="attachment-option" id="attachImage">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  <span>Photo</span>
+                </button>
+                <button class="attachment-option" id="attachVideo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                  </svg>
+                  <span>Video</span>
+                </button>
+                <button class="attachment-option" id="attachVoice">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                  <span>Voice</span>
+                </button>
+                <button class="attachment-option" id="attachGif">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                    <text x="6" y="14" font-size="6" fill="currentColor">GIF</text>
+                  </svg>
+                  <span>GIF</span>
+                </button>
+              </div>
+              <input type="file" id="imageInput" accept="image/*" style="display:none" />
+              <input type="file" id="videoInput" accept="video/*" style="display:none" />
+              <input type="file" id="voiceInput" accept="audio/*" style="display:none" />
+              <input type="file" id="gifInput" accept="image/gif" style="display:none" />
+              <input id="messageInput" placeholder="Type a message..." />
+              <button type="submit" class="send-btn" id="sendBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+              <button type="button" class="voice-record-btn" id="voiceRecordBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                </svg>
+              </button>
+            </form>
+          </div>
+
+          <!-- Reply Bar -->
+          <div id="replyBar" class="reply-bar hidden">
+            <div class="reply-content">
+              <span class="reply-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 17 4 12 9 7"></polyline>
+                  <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                </svg>
+              </span>
+              <div class="reply-details">
+                <span class="reply-username" id="replyUsername">User</span>
+                <span class="reply-text" id="replyPreview">Message preview</span>
+              </div>
+            </div>
+            <button type="button" class="cancel-reply" id="cancelReply">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Quick Actions Menu -->
+          <div id="quickActions" class="quick-actions">
+            <button class="quick-action" data-action="copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="tooltip">Copy</span>
+            </button>
+            <button class="quick-action" data-action="reply">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 17 4 12 9 7"></polyline>
+                <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+              </svg>
+              <span class="tooltip">Reply</span>
+            </button>
+            <button class="quick-action" data-action="forward">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 1 21 5 17 9"></polyline>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+              </svg>
+              <span class="tooltip">Forward</span>
+            </button>
+            <button class="quick-action" data-action="pin">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="17" x2="12" y2="22"></line>
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+              </svg>
+              <span class="tooltip">Pin</span>
+            </button>
+            <button class="quick-action" data-action="delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span class="tooltip">Delete</span>
+            </button>
+          </div>
+
+          <!-- Message Options Popup -->
+          <div id="messageOptions" class="message-options hidden">
+            <div class="message-options-content">
+              <button class="option-btn" data-action="reply">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 17 4 12 9 7"></polyline>
+                  <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                </svg>
+                <span>Reply</span>
+              </button>
+              <button class="option-btn" data-action="forward">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="17 1 21 5 17 9"></polyline>
+                  <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                  <polyline points="7 19 3 23 7 27"></polyline>
+                  <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                </svg>
+                <span>Forward</span>
+              </button>
+              <button class="option-btn" data-action="edit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <span>Edit</span>
+              </button>
+              <button class="option-btn" data-action="delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Delete</span>
+              </button>
+            </div>
+            <div class="reaction-picker">
+              <button class="reaction-btn" data-emoji="❤️">❤️</button>
+              <button class="reaction-btn" data-emoji="😂">😂</button>
+              <button class="reaction-btn" data-emoji="😮">😮</button>
+              <button class="reaction-btn" data-emoji="😢">😢</button>
+              <button class="reaction-btn" data-emoji="👍">👍</button>
+              <button class="reaction-btn" data-emoji="👎">👎</button>
+            </div>
+          </div>
+
+          <!-- Create Group Modal -->
+          <div id="createGroupModal" class="modal hidden">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h3>Create Group</h3>
+                <button id="closeCreateGroupBtn" class="modal-close">×</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <input type="text" id="groupNameInput" placeholder="Group name" />
+                </div>
+                <div class="form-group">
+                  <label>Add Members</label>
+                  <div id="userSelectList" class="user-select-list"></div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="cancelCreateGroupBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirmCreateGroupBtn" class="btn btn-primary">Create</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Call Modal -->
+          <div id="callModal" class="call-modal hidden">
+            <div class="call-container">
+              <div class="call-video">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <video id="remoteVideo" autoplay playsinline></video>
+              </div>
+              <div class="call-info">
+                <div class="avatar large" id="callAvatar">U</div>
+                <h3 id="callUsername">Username</h3>
+                <p id="callStatus">Calling...</p>
+              </div>
+              <button id="endCallBtn" class="end-call-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                  <line x1="1" y1="1" x2="23" y2="23" stroke-width="3"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Stories Viewer Modal -->
+          <div id="storyModal" class="story-modal hidden">
+            <div class="story-viewer">
+              <div class="story-progress">
+                <div class="progress-bar" id="storyProgress"></div>
+              </div>
+              <div class="story-header">
+                <div class="story-user">
+                  <div class="avatar" id="storyViewerAvatar">U</div>
+                  <div>
+                    <span id="storyViewerUsername">Username</span>
+                    <span id="storyViewerTime" class="story-time">now</span>
+                  </div>
+                </div>
+                <button class="story-close" id="closeStoryBtn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <div class="story-content">
+                <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+                  <button id="storyPrevBtn" type="button" class="action-btn" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);z-index:10;">‹</button>
+                  <img id="storyImage" src="" alt="Story" style="display:none;width:100%;height:100%;object-fit:contain;" />
+                  <video id="storyVideo" src="" style="display:none;width:100%;height:100%;object-fit:contain;" playsinline></video>
+                  <button id="storyNextBtn" type="button" class="action-btn" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);z-index:10;">›</button>
+                </div>
+              </div>
+              <div class="story-footer">
+                <p id="storyViewerCaption"></p>
+                <!-- Story Reactions -->
+                <div id="storyReactions" class="story-reactions"></div>
+                <!-- Story Reply Input -->
+                <div class="story-reply-container" id="storyReplyContainer">
+                  <input type="text" id="storyReplyInput" placeholder="Reply..." class="story-reply-input" />
+                  <button id="storyReplySend" class="story-reply-send">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                  </button>
+                </div>
+                <!-- Story Actions -->
+                <div class="story-actions">
+                  <div class="story-emoji-picker" id="storyEmojiPicker">
+                    <button class="emoji-btn" data-emoji="❤️">❤️</button>
+                    <button class="emoji-btn" data-emoji="😂">😂</button>
+                    <button class="emoji-btn" data-emoji="😮">😮</button>
+                    <button class="emoji-btn" data-emoji="😢">😢</button>
+                    <button class="emoji-btn" data-emoji="🔥">🔥</button>
+                    <button class="emoji-btn" data-emoji="👍">👍</button>
+                  </div>
+                  <button id="storyReactBtn" class="story-action-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                    </svg>
+                  </button>
+                  <button id="storyHighlightBtn" class="story-action-btn" title="Add to Highlights">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                  </button>
+                  <button id="storyViewersBtn" class="story-action-btn" title="Viewers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <span id="storyViewCount">0</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

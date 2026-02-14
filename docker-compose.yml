@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: social_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: social_app
+      POSTGRES_USER: social
+      POSTGRES_PASSWORD: social
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: social_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  coturn:
+    image: coturn/coturn:4.6
+    container_name: social_coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    volumes:
+      - ./infra/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+volumes:
+  pg_data:
