@@ -25,7 +25,7 @@ const initializeFirebase = () => {
       credential: admin.credential.cert({
         projectId,
         clientEmail,
-        privateKey: privateKey.replace(/\\n/g, '\n'),
+        privateKey: privateKey.split('\\n').join('\n'),
       }),
       storageBucket: `${projectId}.appspot.com`,
     });
