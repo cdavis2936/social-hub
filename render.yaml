@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: social-hub
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        value: YOUR_MONGODB_URI
+      - key: REDIS_URL
+        value: YOUR_REDIS_URL
+      - key: PUBLIC_BASE_URL
+        value: https://social-hub.onrender.com

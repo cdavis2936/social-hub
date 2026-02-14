@@ -35,7 +35,7 @@ const Comment = require('./models/Comment');
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'default_dev_secret_key';
 if (!JWT_SECRET) {
   console.error('JWT_SECRET environment variable is required');
   process.exit(1);
