@@ -18,7 +18,7 @@ const mongoose = require('mongoose');
 const { Queue } = require('bullmq');
 const IORedis = require('ioredis');
 const { normalizeCaption, processReelJob } = require('./reelProcessor');
-const mongoStorage = require('./mongoStorage');
+const firebaseStorage = require('./firebaseStorage');
 
 // Models
 const User = require('./models/User');
@@ -926,15 +926,16 @@ app.post('/api/me/avatar', authMiddleware, avatarUpload.single('avatar'), async 
 
   let avatarUrl = `/uploads/avatars/${req.file.filename}`;
 
-  // Upload to GridFS for persistence
-  if (mongoStorage.isGridFSReady()) {
+  // Upload to Firebase Storage for persistence
+  if (firebaseStorage.isFirebaseReady()) {
     try {
-      const result = await mongoStorage.uploadToGridFS(req.file.path, req.file.filename, req.file.mimetype);
-      avatarUrl = result.url; // Use GridFS URL
+      const destinationPath = `avatars/${req.file.filename}`;
+      const result = await firebaseStorage.uploadToFirebase(req.file.path, destinationPath, req.file.mimetype);
+      avatarUrl = result.url; // Use Firebase URL
       await fs.promises.unlink(req.file.path).catch(() => null);
-      console.log('Avatar uploaded to GridFS:', result.id);
+      console.log('Avatar uploaded to Firebase:', result.filename);
     } catch (err) {
-      console.error('GridFS avatar upload failed, using local storage:', err);
+      console.error('Firebase avatar upload failed, using local storage:', err);
     }
   }
 
@@ -1628,19 +1629,21 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
 
   let mediaUrl = `/uploads/stories/${req.file.filename}`;
   let mediaType = isVideo ? 'video' : 'image';
-  let gridFsFileId = null;
+  let firebaseFileId = null;
 
-  // Upload to GridFS for persistence
-  if (mongoStorage.isGridFSReady()) {
+  // Upload to Firebase Storage for persistence
+  if (firebaseStorage.isFirebaseReady()) {
     try {
       const filePath = path.join(UPLOAD_DIR, 'stories', req.file.filename);
+      const destinationPath = `stories/${req.file.filename}`;
       const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-      const result = await mongoStorage.uploadToGridFS(filePath, req.file.filename, contentType);
-      gridFsFileId = result.id;
-      mediaUrl = result.url; // Use GridFS URL
-      console.log('Story media uploaded to GridFS:', result.id);
+      const result = await firebaseStorage.uploadToFirebase(filePath, destinationPath, contentType);
+      firebaseFileId = result.filename;
+      mediaUrl = result.url; // Use Firebase URL
+      await fs.promises.unlink(filePath).catch(() => null);
+      console.log('Story media uploaded to Firebase:', result.filename);
     } catch (err) {
-      console.error('GridFS upload failed, using local storage:', err);
+      console.error('Firebase upload failed, using local storage:', err);
     }
   }
 
@@ -1661,17 +1664,18 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
         mediaUrl = `/uploads/stories/${outputName}`;
         mediaType = 'video';
 
-        // Upload transcoded video to GridFS
-        if (mongoStorage.isGridFSReady() && gridFsFileId) {
+        // Upload transcoded video to Firebase
+        if (firebaseStorage.isFirebaseReady() && firebaseFileId) {
           try {
-            await mongoStorage.deleteFromGridFS(gridFsFileId); // Delete original
-            const result = await mongoStorage.uploadToGridFS(outputPath, outputName, 'video/mp4');
-            gridFsFileId = result.id;
+            await firebaseStorage.deleteFromFirebase(firebaseFileId); // Delete original
+            const destinationPath = `stories/${outputName}`;
+            const result = await firebaseStorage.uploadToFirebase(outputPath, destinationPath, 'video/mp4');
+            firebaseFileId = result.filename;
             mediaUrl = result.url;
             await fs.promises.unlink(outputPath).catch(() => null);
-            console.log('Transcoded video uploaded to GridFS:', result.id);
+            console.log('Transcoded video uploaded to Firebase:', result.filename);
           } catch (err) {
-            console.error('GridFS upload for transcoded video failed:', err);
+            console.error('Firebase upload for transcoded video failed:', err);
             mediaUrl = `/uploads/stories/${outputName}`;
           }
         }
@@ -3064,6 +3068,13 @@ const mongoOptions = {
 
 // Connect to MongoDB and start server
 async function startServer() {
+  // Initialize Firebase Storage
+  try {
+    firebaseStorage.initializeFirebase();
+  } catch (err) {
+    console.warn('Firebase initialization failed:', err.message);
+  }
+  
   // Start the server first, then connect to MongoDB in the background
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on ${usingHttps ? 'https' : 'http'}://localhost:${PORT} (bound to 0.0.0.0)`);
@@ -3073,15 +3084,6 @@ async function startServer() {
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/social_app', mongoOptions);
     console.log('Connected to MongoDB');
-    
-    // Initialize GridFS for file storage (if db is available)
-    try {
-      if (mongoose.connection.db) {
-        mongoStorage.initializeGridFS(mongoose.connection.db);
-      }
-    } catch (err) {
-      console.warn('GridFS initialization failed, continuing without it:', err.message);
-    }
     
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);
@@ -3093,6 +3095,13 @@ async function startServer() {
   } catch (err) {
     console.error('MongoDB connection failed:', err.message);
     console.log('Server running in limited mode without database');
+  }
+  
+  // Initialize Firebase Storage
+  try {
+    firebaseStorage.initializeFirebase();
+  } catch (err) {
+    console.warn('Firebase initialization failed:', err.message);
   }
   
   // Initialize queue (optional - don't crash if Redis unavailable)
