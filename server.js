@@ -1152,6 +1152,27 @@ app.get('/api/users', authMiddleware, async (req, res) => {
   res.json({ users: ordered.map(sanitizeUser) });
 });
 
+// Search for users by username or display name
+app.get('/api/users/search', authMiddleware, async (req, res) => {
+  const query = String(req.query.q || '').trim();
+  const myId = req.user.id;
+  
+  if (!query || query.length < 2) {
+    return res.json({ users: [] });
+  }
+  
+  // Search by username or displayName (case-insensitive)
+  const users = await User.find({
+    _id: { $ne: myId },
+    $or: [
+      { username: { $regex: query, $options: 'i' } },
+      { displayName: { $regex: query, $options: 'i' } }
+    ]
+  }).select('-passwordHash').limit(20);
+  
+  res.json({ users: users.map(sanitizeUser) });
+});
+
 app.get('/api/messages/:peerId', authMiddleware, async (req, res) => {
   const peerId = req.params.peerId;
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
