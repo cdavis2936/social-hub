@@ -3070,8 +3070,14 @@ async function startServer() {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/social_app', mongoOptions);
     console.log('Connected to MongoDB');
     
-    // Initialize GridFS for file storage
-    mongoStorage.initializeGridFS(mongoose.connection.db);
+    // Initialize GridFS for file storage (if db is available)
+    try {
+      if (mongoose.connection.db) {
+        mongoStorage.initializeGridFS(mongoose.connection.db);
+      }
+    } catch (err) {
+      console.warn('GridFS initialization failed, continuing without it:', err.message);
+    }
     
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);
