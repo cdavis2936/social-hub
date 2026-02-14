@@ -10,18 +10,27 @@ let bucket = null;
 const initializeFirebase = () => {
   try {
     // Parse the service account from environment variable
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+    // Handle escaped newlines in the environment variable
+    const serviceAccountJson = (process.env.FIREBASE_SERVICE_ACCOUNT || '').replace(/\\n/g, '\n');
+    const serviceAccount = JSON.parse(serviceAccountJson);
     
     if (!serviceAccount.private_key) {
       console.warn('Firebase service account not configured');
       return false;
     }
     
+    // Validate required fields
+    if (!serviceAccount.project_id) {
+      console.error('Firebase service account missing project_id');
+      return false;
+    }
+    
     initializeApp({
-      credential: cert(serviceAccount)
+      credential: cert(serviceAccount),
+      storageBucket: BUCKET_NAME
     });
     
-    bucket = getStorage().bucket(BUCKET_NAME);
+    bucket = getStorage().bucket();
     console.log('Firebase Storage initialized:', BUCKET_NAME);
     return true;
   } catch (err) {

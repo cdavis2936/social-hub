@@ -2246,8 +2246,19 @@ storyVideo?.addEventListener('error', () => {
     networkOnline: navigator.onLine
   }));
   
+  // Show error message overlay
+  showStoryMediaError('Video unavailable - file may have been removed');
+  
   if (storyVideoRetryCount >= STORY_MEDIA_MAX_RETRIES) {
     console.warn('Story video retry limit reached:', currentStory.mediaUrl);
+    // Auto-advance to next story after max retries
+    setTimeout(() => {
+      if (storyViewerIndex < storyViewerList.length - 1) {
+        openStoryAt(storyViewerIndex + 1);
+      } else {
+        closeStory();
+      }
+    }, 1500);
     return;
   }
 
@@ -2264,6 +2275,41 @@ storyVideo?.addEventListener('error', () => {
     }, 1000);
   }
 });
+
+function showStoryMediaError(message) {
+  // Create or update error overlay
+  let errorOverlay = document.getElementById('story-error-overlay');
+  if (!errorOverlay) {
+    errorOverlay = document.createElement('div');
+    errorOverlay.id = 'story-error-overlay';
+    errorOverlay.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 1000;
+      font-size: 14px;
+    `;
+    const storyViewer = document.getElementById('story-viewer');
+    if (storyViewer) {
+      storyViewer.appendChild(errorOverlay);
+    }
+  }
+  errorOverlay.textContent = message;
+  errorOverlay.style.display = 'block';
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    if (errorOverlay) {
+      errorOverlay.style.display = 'none';
+    }
+  }, 5000);
+}
 
 function closeStory() {
   storyModal.classList.add('hidden');
