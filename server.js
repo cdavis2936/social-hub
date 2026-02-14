@@ -230,6 +230,55 @@ app.use((req, _res, next) => {
   });
   next();
 });
+// Handle video streaming with Range requests
+app.get('/uploads/stories/:filename', async (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(UPLOAD_DIR, 'stories', filename);
+  
+  // Security check
+  if (filename.includes('..')) {
+    return res.status(403).json({ error: 'Invalid filename' });
+  }
+  
+  try {
+    const stat = await fs.promises.stat(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    
+    if (range) {
+      // Parse Range header
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = end - start + 1;
+      
+      res.writeHead(206, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': chunksize,
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*'
+      });
+      
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': fileSize,
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*'
+      });
+      
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+    }
+  } catch (err) {
+    console.error('Video streaming error:', err);
+    res.status(404).json({ error: 'Video not found' });
+  }
+});
+
 app.use(express.json({ limit: '100mb' }));
 app.use('/uploads', express.static(UPLOAD_DIR, {
   setHeaders: (res, filePath) => {
@@ -241,7 +290,11 @@ app.use('/uploads', express.static(UPLOAD_DIR, {
     // Set content-type based on extension
     if (filePath.endsWith('.mp4')) {
       res.set('Content-Type', 'video/mp4');
+      res.set('Accept-Ranges', 'bytes');
     }
+    // Enable CORS for media files
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
   }
 }));
 app.use(express.static(path.join(__dirname, 'public'), {
