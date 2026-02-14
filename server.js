@@ -2848,7 +2848,7 @@ const emitOnlineUsers = () => {
   io.emit('online_users', Array.from(onlineByUserId.keys()));
 };
 
-const emitTyping = (userId, peerId, isTyping) => {
+const emitTyping = (socket, userId, peerId, isTyping) => {
   const peerSocketId = onlineByUserId.get(peerId);
   if (peerSocketId) {
     const user = socket?.users?.get(userId);
@@ -2905,11 +2905,11 @@ io.on('connection', (socket) => {
     .catch((err) => console.error('Error marking messages delivered:', err));
 
   socket.on('typing_start', ({ toUserId }) => {
-    emitTyping(userId, toUserId, true);
+    emitTyping(socket, userId, toUserId, true);
   });
 
   socket.on('typing_stop', ({ toUserId }) => {
-    emitTyping(userId, toUserId, false);
+    emitTyping(socket, userId, toUserId, false);
   });
 
   socket.on('group:join', async ({ groupId }) => {
@@ -3066,6 +3066,12 @@ const mongoOptions = {
 
 // Connect to MongoDB and start server
 async function startServer() {
+  // Start the server first, then connect to MongoDB in the background
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on ${usingHttps ? 'https' : 'http'}://localhost:${PORT} (bound to 0.0.0.0)`);
+  });
+  
+  // Connect to MongoDB in background (don't crash server if it fails)
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/social_app', mongoOptions);
     console.log('Connected to MongoDB');
@@ -3086,15 +3092,16 @@ async function startServer() {
     mongoose.connection.on('disconnected', () => {
       console.warn('MongoDB disconnected. Attempting to reconnect...');
     });
-    
-    await initQueueIfAvailable();
-    
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on ${usingHttps ? 'https' : 'http'}://localhost:${PORT} (bound to 0.0.0.0)`);
-    });
   } catch (err) {
-    console.error('Failed to connect to MongoDB:', err.message);
-    process.exit(1);
+    console.error('MongoDB connection failed:', err.message);
+    console.log('Server running in limited mode without database');
+  }
+  
+  // Initialize queue (optional - don't crash if Redis unavailable)
+  try {
+    await initQueueIfAvailable();
+  } catch (err) {
+    console.warn('Queue initialization failed:', err.message);
   }
 }
 
