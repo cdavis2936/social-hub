@@ -3097,13 +3097,6 @@ async function startServer() {
     console.log('Server running in limited mode without database');
   }
   
-  // Initialize Firebase Storage
-  try {
-    firebaseStorage.initializeFirebase();
-  } catch (err) {
-    console.warn('Firebase initialization failed:', err.message);
-  }
-  
   // Initialize queue (optional - don't crash if Redis unavailable)
   try {
     await initQueueIfAvailable();
