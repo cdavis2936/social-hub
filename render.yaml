@@ -3,7 +3,7 @@ services:
     name: social-hub
     env: node
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: NODE_OPTIONS=--openssl-legacy-provider node server.js
     envVars:
       - key: PORT
         value: 10000
