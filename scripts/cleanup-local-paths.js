@@ -1,6 +1,8 @@
 /**
- * Script to clean up old records with local paths from the database.
+ * Script to completely clean up all media records and start fresh with Firebase.
  * Run with: node scripts/cleanup-local-paths.js
+ * 
+ * WARNING: This will delete ALL stories, posts with media, messages with media, and reels!
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -16,37 +18,28 @@ async function cleanup() {
   const Message = require('../models/Message');
   const Reel = require('../models/Reel');
 
-  // Pattern for local paths
-  const localPathPattern = /^\/uploads\//;
+  // Delete ALL stories (they all have media)
+  const storyResult = await Story.deleteMany({});
+  console.log(`Deleted ${storyResult.deletedCount} stories`);
 
-  // Clean Stories
-  const storyResult = await Story.deleteMany({ mediaUrl: localPathPattern });
-  console.log(`Deleted ${storyResult.deletedCount} stories with local paths`);
-
-  // Clean Posts
+  // Delete ALL posts with media (media array not empty)
   const postResult = await Post.deleteMany({ 
-    $or: [
-      { mediaUrl: localPathPattern },
-      { 'media.url': localPathPattern }
-    ]
+    media: { $exists: true, $ne: [] }
   });
-  console.log(`Deleted ${postResult.deletedCount} posts with local paths`);
+  console.log(`Deleted ${postResult.deletedCount} posts with media`);
 
-  // Clean Messages
-  const messageResult = await Message.deleteMany({ mediaUrl: localPathPattern });
-  console.log(`Deleted ${messageResult.deletedCount} messages with local paths`);
-
-  // Clean Reels
-  const reelResult = await Reel.deleteMany({ 
-    $or: [
-      { videoUrl: localPathPattern },
-      { sourceVideoUrl: localPathPattern }
-    ]
+  // Delete ALL messages with media
+  const messageResult = await Message.deleteMany({ 
+    mediaUrl: { $exists: true, $ne: null }
   });
-  console.log(`Deleted ${reelResult.deletedCount} reels with local paths`);
+  console.log(`Deleted ${messageResult.deletedCount} messages with media`);
 
-  console.log('\nCleanup complete!');
-  console.log('Note: Users will need to re-upload content that was stored locally.');
+  // Delete ALL reels (they all have video)
+  const reelResult = await Reel.deleteMany({});
+  console.log(`Deleted ${reelResult.deletedCount} reels`);
+
+  console.log('\n✓ Cleanup complete! All media records have been deleted.');
+  console.log('New uploads will use Firebase Storage.');
   
   await mongoose.disconnect();
   process.exit(0);
