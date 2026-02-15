@@ -45,6 +45,21 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
 const SSL_CA_PATH = process.env.SSL_CA_PATH || '';
 
+// Define upload directories
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const ORIGINAL_DIR = path.join(UPLOADS_DIR, 'original');
+const PROCESSED_DIR = path.join(UPLOADS_DIR, 'processed');
+
+// Ensure upload directories exist
+try {
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  if (!fs.existsSync(ORIGINAL_DIR)) fs.mkdirSync(ORIGINAL_DIR, { recursive: true });
+  if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true });
+  console.log('Upload directories initialized');
+} catch (err) {
+  console.error('Failed to create upload directories:', err);
+}
+
 let usingHttps = false;
 let server = null;
 if (SSL_KEY_PATH && SSL_CERT_PATH) {
@@ -79,14 +94,6 @@ const io = new Server(server, {
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `${usingHttps ? 'https' : 'http'}://localhost:${PORT}`;
 const MAX_REEL_DURATION_SECONDS = Number(process.env.MAX_REEL_DURATION_SECONDS || 60);
-
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-const ORIGINAL_DIR = path.join(UPLOAD_DIR, 'original');
-const PROCESSED_DIR = path.join(UPLOAD_DIR, 'processed');
-const AVATAR_DIR = path.join(UPLOAD_DIR, 'avatars');
-for (const dir of [UPLOAD_DIR, ORIGINAL_DIR, PROCESSED_DIR, AVATAR_DIR]) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
 
 let redisConnection = null;
 let reelQueue = null;
@@ -149,31 +156,12 @@ async function transcodeStoryToMp4(inputPath, outputPath) {
   ]);
 }
 
-// Story upload storage
-const storyStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = path.join(UPLOAD_DIR, 'stories');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const isVideo = file.mimetype.startsWith('video/');
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext || (isVideo ? '.mp4' : '.jpg')}`);
-  }
-});
+// Story upload storage - use memory storage for Firebase upload
 const storyUpload = multer({
-  storage: storyStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-const avatarStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, AVATAR_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  }
-});
 const avatarUpload = multer({
   storage: avatarStorage,
   limits: { fileSize: 10 * 1024 * 1024 }
@@ -231,118 +219,18 @@ app.use((req, _res, next) => {
   });
   next();
 });
-// Handle video streaming with Range requests
-app.get('/uploads/stories/:filename', async (req, res) => {
-  const filename = req.params.filename;
-  
-  // Security check
-  if (filename.includes('..')) {
-    return res.status(403).json({ error: 'Invalid filename' });
-  }
-
-  const filePath = path.join(UPLOAD_DIR, 'stories', filename);
-  
-  try {
-    const stat = await fs.promises.stat(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
-    
-    if (range) {
-      // Parse Range header
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = end - start + 1;
-      
-      res.writeHead(206, {
-        'Content-Type': 'video/mp4',
-        'Content-Length': chunksize,
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*'
-      });
-      
-      const stream = fs.createReadStream(filePath, { start, end });
-      stream.pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Type': 'video/mp4',
-        'Content-Length': fileSize,
-        'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*'
-      });
-      
-      const stream = fs.createReadStream(filePath);
-      stream.pipe(res);
-    }
-  } catch (err) {
-    console.error('Video streaming error:', err);
-    res.status(404).json({ error: 'Video not found' });
-  }
-});
-
-// Serve files from GridFS
-app.get('/api/files/:fileId', async (req, res) => {
-  const fileId = req.params.fileId;
-  
-  if (!mongoStorage.isGridFSReady()) {
-    return res.status(404).json({ error: 'File storage not available' });
-  }
-
-  try {
-    const bucket = mongoStorage.getBucket();
-    const ObjectId = require('mongoose').Types.ObjectId;
-    const fileObjectId = new ObjectId(fileId);
-    
-    // Check if file exists
-    const files = await bucket.find({ _id: fileObjectId }).toArray();
-    if (!files || files.length === 0) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    
-    const file = files[0];
-    const contentType = file.metadata?.contentType || 'application/octet-stream';
-    
-    res.set('Content-Type', contentType);
-    if (contentType.startsWith('video/')) {
-      res.set('Accept-Ranges', 'bytes');
-    }
-    res.set('Access-Control-Allow-Origin', '*');
-    
-    const downloadStream = bucket.openDownloadStream(fileObjectId);
-    downloadStream.pipe(res);
-    
-    downloadStream.on('error', (err) => {
-      console.error('GridFS stream error:', err);
-      res.status(500).json({ error: 'Error streaming file' });
-    });
-  } catch (err) {
-    console.error('GridFS file error:', err);
-    res.status(404).json({ error: 'File not found' });
-  }
-});
 
 app.use(express.json({ limit: '100mb' }));
-app.use('/uploads', express.static(UPLOAD_DIR, {
-  setHeaders: (res, filePath) => {
-    // Prevent path traversal and set proper headers
-    if (filePath.includes('..')) {
-      res.status(403).end();
-      return;
-    }
-    // Set content-type based on extension
-    if (filePath.endsWith('.mp4')) {
-      res.set('Content-Type', 'video/mp4');
-      res.set('Accept-Ranges', 'bytes');
-    }
-    // Enable CORS for media files
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  }
-}));
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false,
   maxAge: '1h'
+}));
+
+// Serve uploaded files (for backward compatibility with local storage)
+// Note: New uploads should use Firebase Storage
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  maxAge: '1h',
+  fallthrough: false
 }));
 
 const authMiddleware = (req, res, next) => {
@@ -415,7 +303,7 @@ async function enqueueReel(reelId) {
   if (!reelQueue) {
     await processReelJob({
       reelId,
-      uploadsDir: UPLOAD_DIR,
+      uploadsDir: UPLOADS_DIR,
       io,
       publicBaseUrl: PUBLIC_BASE_URL,
       maxDurationSeconds: MAX_REEL_DURATION_SECONDS
@@ -924,19 +812,22 @@ app.post('/api/me/avatar', authMiddleware, avatarUpload.single('avatar'), async 
   const user = await User.findById(req.user.id);
   if (!user) return res.status(404).json({ error: 'user not found' });
 
-  let avatarUrl = `/uploads/avatars/${req.file.filename}`;
+  let avatarUrl = '';
 
-  // Upload to Firebase Storage for persistence
+  // Upload to Firebase Storage
   if (firebaseStorage.isFirebaseReady()) {
     try {
       const destinationPath = `avatars/${req.file.filename}`;
       const result = await firebaseStorage.uploadToFirebase(req.file.path, destinationPath, req.file.mimetype);
-      avatarUrl = result.url; // Use Firebase URL
+      avatarUrl = result.url;
       await fs.promises.unlink(req.file.path).catch(() => null);
       console.log('Avatar uploaded to Firebase:', result.filename);
     } catch (err) {
-      console.error('Firebase avatar upload failed, using local storage:', err);
+      console.error('Firebase avatar upload failed:', err);
+      return res.status(500).json({ error: 'Failed to upload avatar' });
     }
+  } else {
+    return res.status(503).json({ error: 'Storage service unavailable' });
   }
 
   user.avatarUrl = avatarUrl;
@@ -1550,10 +1441,14 @@ app.post('/api/reels', authMiddleware, upload.single('video'), async (req, res) 
   if (!req.file) return res.status(400).json({ error: 'video file is required (field: video)' });
 
   const caption = normalizeCaption(req.body.caption || '');
+  
+  // Upload to Firebase
+  const firebaseUrl = await firebaseStorage.uploadToFirebase(req.file);
+  
   const reel = await Reel.create({
     userId: req.user.id,
     caption,
-    sourceVideoUrl: `/uploads/original/${req.file.filename}`,
+    sourceVideoUrl: firebaseUrl,
     status: 'PROCESSING'
   });
 
@@ -1627,63 +1522,23 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
     return res.status(400).json({ error: 'Invalid file type. Must be an image or video file.' });
   }
 
-  let mediaUrl = `/uploads/stories/${req.file.filename}`;
+  let mediaUrl = '';
   let mediaType = isVideo ? 'video' : 'image';
-  let firebaseFileId = null;
 
-  // Upload to Firebase Storage for persistence
+  // Upload to Firebase Storage
   if (firebaseStorage.isFirebaseReady()) {
     try {
-      const filePath = path.join(UPLOAD_DIR, 'stories', req.file.filename);
       const destinationPath = `stories/${req.file.filename}`;
       const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-      const result = await firebaseStorage.uploadToFirebase(filePath, destinationPath, contentType);
-      firebaseFileId = result.filename;
-      mediaUrl = result.url; // Use Firebase URL
-      await fs.promises.unlink(filePath).catch(() => null);
+      const result = await firebaseStorage.uploadToFirebase(req.file.path, destinationPath, contentType);
+      mediaUrl = result.url;
       console.log('Story media uploaded to Firebase:', result.filename);
     } catch (err) {
-      console.error('Firebase upload failed, using local storage:', err);
+      console.error('Firebase upload failed:', err);
+      return res.status(500).json({ error: 'Failed to upload story' });
     }
-  }
-
-  if (isVideo) {
-    const hasFfmpeg = await checkBinary('ffmpeg');
-    if (!hasFfmpeg) {
-      // Graceful fallback: keep original uploaded video if ffmpeg is unavailable.
-      console.warn('ffmpeg missing, skipping story transcode and using original upload');
-    } else {
-      const inputPath = path.join(UPLOAD_DIR, 'stories', req.file.filename);
-      const baseName = path.basename(req.file.filename, path.extname(req.file.filename));
-      const outputName = `${baseName}.mp4`;
-      const outputPath = path.join(UPLOAD_DIR, 'stories', outputName);
-
-      try {
-        await transcodeStoryToMp4(inputPath, outputPath);
-        await fs.promises.unlink(inputPath).catch(() => null);
-        mediaUrl = `/uploads/stories/${outputName}`;
-        mediaType = 'video';
-
-        // Upload transcoded video to Firebase
-        if (firebaseStorage.isFirebaseReady() && firebaseFileId) {
-          try {
-            await firebaseStorage.deleteFromFirebase(firebaseFileId); // Delete original
-            const destinationPath = `stories/${outputName}`;
-            const result = await firebaseStorage.uploadToFirebase(outputPath, destinationPath, 'video/mp4');
-            firebaseFileId = result.filename;
-            mediaUrl = result.url;
-            await fs.promises.unlink(outputPath).catch(() => null);
-            console.log('Transcoded video uploaded to Firebase:', result.filename);
-          } catch (err) {
-            console.error('Firebase upload for transcoded video failed:', err);
-            mediaUrl = `/uploads/stories/${outputName}`;
-          }
-        }
-      } catch (err) {
-        // Graceful fallback: keep original uploaded video on transcode failure.
-        console.error('Story transcode failed, using original upload:', err);
-      }
-    }
+  } else {
+    return res.status(503).json({ error: 'Storage service unavailable' });
   }
 
   const story = new Story({
@@ -2194,12 +2049,17 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
     return res.status(400).json({ error: 'At least one media file is required' });
   }
   
-  const media = files.map(f => ({
-    type: f.mimetype.startsWith('video') ? 'video' : 'image',
-    url: `/uploads/original/${f.filename}`,
-    width: 0,
-    height: 0
-  }));
+  // Upload all files to Firebase
+  const mediaPromises = files.map(async (f) => {
+    const firebaseUrl = await firebaseStorage.uploadToFirebase(f);
+    return {
+      type: f.mimetype.startsWith('video') ? 'video' : 'image',
+      url: firebaseUrl,
+      width: 0,
+      height: 0
+    };
+  });
+  const media = await Promise.all(mediaPromises);
   
   const locationObj = location ? JSON.parse(location) : {};
   const hashtags = extractHashtags(caption || '');
@@ -2870,9 +2730,12 @@ app.post('/api/media/upload', authMiddleware, upload.single('media'), async (req
   const isAudio = req.file.mimetype.startsWith('audio/');
   const mediaType = isVideo ? 'video' : isAudio ? 'voice' : 'image';
   
+  // Upload to Firebase
+  const firebaseUrl = await firebaseStorage.uploadToFirebase(req.file);
+  
   const fileInfo = {
     filename: req.file.filename,
-    url: `/uploads/original/${req.file.filename}`,
+    url: firebaseUrl,
     mediaType
   };
   

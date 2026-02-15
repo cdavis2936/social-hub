@@ -2254,7 +2254,7 @@ storyVideo?.addEventListener('error', () => {
     // Auto-advance to next story after max retries
     setTimeout(() => {
       if (storyViewerIndex < storyViewerList.length - 1) {
-        openStoryAt(storyViewerIndex + 1);
+        renderStoryAt(storyViewerIndex + 1);
       } else {
         closeStory();
       }
