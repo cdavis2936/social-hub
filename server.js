@@ -1459,7 +1459,8 @@ app.post('/api/reels', authMiddleware, upload.single('video'), async (req, res) 
   const caption = normalizeCaption(req.body.caption || '');
   
   // Upload to Firebase
-  const firebaseUrl = await firebaseStorage.uploadToFirebase(req.file);
+  const result = await firebaseStorage.uploadToFirebase(req.file);
+  const firebaseUrl = typeof result === 'string' ? result : result.url;
   
   const reel = await Reel.create({
     userId: req.user.id,
@@ -2068,7 +2069,8 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
   
   // Upload all files to Firebase
   const mediaPromises = files.map(async (f) => {
-    const firebaseUrl = await firebaseStorage.uploadToFirebase(f);
+    const result = await firebaseStorage.uploadToFirebase(f);
+    const firebaseUrl = typeof result === 'string' ? result : result.url;
     return {
       type: f.mimetype.startsWith('video') ? 'video' : 'image',
       url: firebaseUrl,
@@ -2748,7 +2750,8 @@ app.post('/api/media/upload', authMiddleware, upload.single('media'), async (req
   const mediaType = isVideo ? 'video' : isAudio ? 'voice' : 'image';
   
   // Upload to Firebase
-  const firebaseUrl = await firebaseStorage.uploadToFirebase(req.file);
+  const result = await firebaseStorage.uploadToFirebase(req.file);
+  const firebaseUrl = typeof result === 'string' ? result : result.url;
   
   const fileInfo = {
     filename: req.file.filename,
