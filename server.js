@@ -2077,7 +2077,9 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
   // Upload all files to Firebase
   const mediaPromises = files.map(async (f) => {
     try {
+      console.log('Uploading file:', f.originalname, 'mimetype:', f.mimetype);
       const result = await firebaseStorage.uploadToFirebase(f);
+      console.log('Upload result:', result);
       const firebaseUrl = typeof result === 'string' ? result : result.url;
       return {
         type: f.mimetype.startsWith('video') ? 'video' : 'image',
@@ -2087,7 +2089,7 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
       };
     } catch (uploadErr) {
       console.error('Firebase upload error:', uploadErr);
-      throw new Error('Failed to upload file to cloud storage');
+      throw new Error('Failed to upload file to cloud storage: ' + uploadErr.message);
     }
   });
   const media = await Promise.all(mediaPromises);

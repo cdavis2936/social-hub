@@ -101,41 +101,53 @@ const uploadToFirebase = async (fileOrPath, destinationPath, contentType) => {
 
     // Memory storage (buffer)
     if (file.buffer) {
-      const fileObj = bucket.file(destPath);
+      console.log('Firebase: Using memory storage for', originalName);
+      try {
+        const fileObj = bucket.file(destPath);
 
-      await fileObj.save(file.buffer, {
-        metadata: {
-          contentType: mimeType,
+        await fileObj.save(file.buffer, {
           metadata: {
-            uploadedAt: new Date().toISOString()
-          }
-        },
-        resumable: false
-      });
+            contentType: mimeType,
+            metadata: {
+              uploadedAt: new Date().toISOString()
+            }
+          },
+          resumable: false
+        });
 
-      const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${encodeURI(destPath)}`;
-      return { url: publicUrl, filename: destPath };
+        const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${encodeURI(destPath)}`;
+        return { url: publicUrl, filename: destPath };
+      } catch (err) {
+        console.error('Firebase memory storage error:', err.message);
+        throw err;
+      }
     }
 
     // Disk storage (path)
     if (file.path) {
+      console.log('Firebase: Using disk storage for', file.path);
       // ensure file exists
       if (!fs.existsSync(file.path)) {
         throw new Error(`Multer disk file not found at path: ${file.path}`);
       }
 
-      await bucket.upload(file.path, {
-        destination: destPath,
-        metadata: {
-          contentType: mimeType,
+      try {
+        await bucket.upload(file.path, {
+          destination: destPath,
           metadata: {
-            uploadedAt: new Date().toISOString()
+            contentType: mimeType,
+            metadata: {
+              uploadedAt: new Date().toISOString()
+            }
           }
-        }
-      });
+        });
 
-      const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${encodeURI(destPath)}`;
-      return { url: publicUrl, filename: destPath };
+        const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${encodeURI(destPath)}`;
+        return { url: publicUrl, filename: destPath };
+      } catch (err) {
+        console.error('Firebase disk storage error:', err.message);
+        throw err;
+      }
     }
 
     throw new Error('Unsupported multer file object: missing buffer and path');
