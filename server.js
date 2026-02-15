@@ -1546,7 +1546,8 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
     try {
       const destinationPath = `stories/${req.file.filename}`;
       const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-      const result = await firebaseStorage.uploadToFirebase(req.file.path, destinationPath, contentType);
+      // Pass the multer file object which has buffer property when using memoryStorage
+      const result = await firebaseStorage.uploadToFirebase(req.file, destinationPath, contentType);
       mediaUrl = result.url;
       console.log('Story media uploaded to Firebase:', result.filename);
     } catch (err) {
