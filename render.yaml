@@ -10,7 +10,7 @@ services:
       - key: NODE_OPTIONS
         value: --openssl-legacy-provider
       - key: MONGODB_URI
-        value: mongodb+srv://qipguruijepgwony_db_user:jepgwony@cluster0.ue21svx.mongodb.net/?retryWrites=true&w=majority
+        value: mongodb+srv://qipguruijepgwony_db_user:jepgwony@cluster0.ue21svx.mongodb.net/test?retryWrites=true&w=majority
       - key: REDIS_URL
         value: redis://default:POHokUIGlxgjAKIoZIP81oqtSQygsOHo@redis-12461.c61.us-east-1-3.ec2.cloud.redislabs.com:12461
       - key: PUBLIC_BASE_URL

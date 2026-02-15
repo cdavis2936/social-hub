@@ -246,7 +246,13 @@ app.use('/uploads', express.static(UPLOADS_DIR, {
 
 // Handle 404 for /uploads routes
 app.use('/uploads/*', (_req, res) => {
-  res.status(404).json({ error: 'File not found' });
+  // Debug: log what URL was requested
+  console.log('Legacy local path requested:', _req.path);
+  res.status(404).json({ 
+    error: 'File not found',
+    message: 'This file was stored locally and no longer exists. Please re-upload.',
+    legacyPath: _req.path
+  });
 });
 
 const authMiddleware = (req, res, next) => {
