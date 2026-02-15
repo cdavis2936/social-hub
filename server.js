@@ -241,8 +241,13 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // Note: New uploads should use Firebase Storage
 app.use('/uploads', express.static(UPLOADS_DIR, {
   maxAge: '1h',
-  fallthrough: false
+  fallthrough: true
 }));
+
+// Handle 404 for /uploads routes
+app.use('/uploads/*', (_req, res) => {
+  res.status(404).json({ error: 'File not found' });
+});
 
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization || '';
