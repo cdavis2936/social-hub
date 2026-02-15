@@ -249,6 +249,47 @@ app.use('/uploads/*', (_req, res) => {
   res.status(404).json({ error: 'File not found' });
 });
 
+// DEBUG: Temporary debug route to list uploads directory
+// TODO: Remove after debugging
+app.get('/debug/uploads', async (_req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    const listDir = async (dirPath, relativeTo) => {
+      const result = [];
+      try {
+        await fs.promises.access(dirPath);
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relPath = path.relative(relativeTo, fullPath);
+          if (entry.isDirectory()) {
+            const subFiles = await listDir(fullPath, relativeTo);
+            result.push({ type: 'directory', name: entry.name, path: relPath, children: subFiles });
+          } else {
+            const stats = await fs.promises.stat(fullPath);
+            result.push({ type: 'file', name: entry.name, path: relPath, size: stats.size, modified: stats.mtime });
+          }
+        }
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+      return result;
+    };
+
+    const uploadsExists = await fs.promises.access(UPLOADS_DIR).then(() => true).catch(() => false);
+    if (!uploadsExists) {
+      return res.json({ exists: false, message: 'Uploads directory does not exist', path: UPLOADS_DIR });
+    }
+
+    const contents = await listDir(UPLOADS_DIR, UPLOADS_DIR);
+    res.json({ exists: true, path: UPLOADS_DIR, contents });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
