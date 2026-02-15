@@ -7,6 +7,8 @@ services:
     envVars:
       - key: PORT
         value: 10000
+      - key: NODE_OPTIONS
+        value: --openssl-legacy-provider
       - key: MONGODB_URI
         value: mongodb+srv://qipguruijepgwony_db_user:jepgwony@cluster0.ue21svx.mongodb.net/?retryWrites=true&w=majority
       - key: REDIS_URL
