@@ -19,6 +19,7 @@ const { Queue } = require('bullmq');
 const IORedis = require('ioredis');
 const { normalizeCaption, processReelJob } = require('./reelProcessor');
 const firebaseStorage = require('./firebaseStorage');
+const cloudinaryStorage = require('./cloudinaryStorage');
 
 // Models
 const User = require('./models/User');
@@ -836,16 +837,15 @@ app.post('/api/me/avatar', authMiddleware, avatarUpload.single('avatar'), async 
 
   let avatarUrl = '';
 
-  // Upload to Firebase Storage
-  if (firebaseStorage.isFirebaseReady()) {
+  // Upload to Cloudinary
+  if (cloudinaryStorage.isCloudinaryReady()) {
     try {
-      const destinationPath = `avatars/${req.file.filename}`;
-      const result = await firebaseStorage.uploadToFirebase(req.file.path, destinationPath, req.file.mimetype);
+      const result = await cloudinaryStorage.uploadToCloudinary(req.file, 'avatars');
       avatarUrl = result.url;
       await fs.promises.unlink(req.file.path).catch(() => null);
-      console.log('Avatar uploaded to Firebase:', result.filename);
+      console.log('Avatar uploaded to Cloudinary:', result.filename);
     } catch (err) {
-      console.error('Firebase avatar upload failed:', err);
+      console.error('Cloudinary avatar upload failed:', err);
       return res.status(500).json({ error: 'Failed to upload avatar' });
     }
   } else {
@@ -1464,8 +1464,8 @@ app.post('/api/reels', authMiddleware, upload.single('video'), async (req, res) 
 
   const caption = normalizeCaption(req.body.caption || '');
   
-  // Upload to Firebase
-  const result = await firebaseStorage.uploadToFirebase(req.file);
+  // Upload to Cloudinary
+  const result = await cloudinaryStorage.uploadToCloudinary(req.file, 'reels');
   const firebaseUrl = typeof result === 'string' ? result : result.url;
   
   const reel = await Reel.create({
@@ -1548,17 +1548,14 @@ app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req
   let mediaUrl = '';
   let mediaType = isVideo ? 'video' : 'image';
 
-  // Upload to Firebase Storage
-  if (firebaseStorage.isFirebaseReady()) {
+  // Upload to Cloudinary
+  if (cloudinaryStorage.isCloudinaryReady()) {
     try {
-      const destinationPath = `stories/${req.file.filename}`;
-      const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-      // Pass the multer file object which has buffer property when using memoryStorage
-      const result = await firebaseStorage.uploadToFirebase(req.file, destinationPath, contentType);
+      const result = await cloudinaryStorage.uploadToCloudinary(req.file, 'stories');
       mediaUrl = result.url;
-      console.log('Story media uploaded to Firebase:', result.filename);
+      console.log('Story media uploaded to Cloudinary:', result.filename);
     } catch (err) {
-      console.error('Firebase upload failed:', err);
+      console.error('Cloudinary upload failed:', err);
       return res.status(500).json({ error: 'Failed to upload story' });
     }
   } else {
@@ -2078,7 +2075,7 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
   const mediaPromises = files.map(async (f) => {
     try {
       console.log('Uploading file:', f.originalname, 'mimetype:', f.mimetype);
-      const result = await firebaseStorage.uploadToFirebase(f);
+      const result = await cloudinaryStorage.uploadToCloudinary(f, 'posts');
       console.log('Upload result:', result);
       const firebaseUrl = typeof result === 'string' ? result : result.url;
       return {
@@ -2767,8 +2764,8 @@ app.post('/api/media/upload', authMiddleware, upload.single('media'), async (req
   const isAudio = req.file.mimetype.startsWith('audio/');
   const mediaType = isVideo ? 'video' : isAudio ? 'voice' : 'image';
   
-  // Upload to Firebase
-  const result = await firebaseStorage.uploadToFirebase(req.file);
+  // Upload to Cloudinary
+  const result = await cloudinaryStorage.uploadToCloudinary(req.file, 'media');
   const firebaseUrl = typeof result === 'string' ? result : result.url;
   
   const fileInfo = {
@@ -2974,6 +2971,13 @@ async function startServer() {
     firebaseStorage.initializeFirebase();
   } catch (err) {
     console.warn('Firebase initialization failed:', err.message);
+  }
+  
+  // Initialize Cloudinary Storage
+  try {
+    cloudinaryStorage.initializeCloudinary();
+  } catch (err) {
+    console.warn('Cloudinary initialization failed:', err.message);
   }
   
   // Start the server first, then connect to MongoDB in the background

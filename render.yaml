@@ -1,3 +1,4 @@
+services:
   - type: web
     name: social-hub
     env: node
@@ -16,12 +17,10 @@
         value: https://social-hub-1-brnh.onrender.com
       - key: JWT_SECRET
         value: any_random_string
-      # Firebase Storage - ADD THESE IN RENDER DASHBOARD
-      - key: FIREBASE_PROJECT_ID
-        value: social-hub-48bb8
-      - key: FIREBASE_CLIENT_EMAIL
-        value: firebase-adminsdk@social-hub-48bb8.iam.gserviceaccount.com
-      - key: FIREBASE_PRIVATE_KEY
+      # Cloudinary Storage - ADD YOUR CLOUDINARY CREDENTIALS
+      - key: CLOUDINARY_CLOUD_NAME
+      - key: CLOUDINARY_API_KEY
+      - key: CLOUDINARY_API_SECRET
       # WebRTC TURN/STUN - ADD THESE IN RENDER DASHBOARD  
       - key: STUN_URLS
         value: stun:stun.l.google.com:19302
