@@ -49,12 +49,14 @@ const SSL_CA_PATH = process.env.SSL_CA_PATH || '';
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const ORIGINAL_DIR = path.join(UPLOADS_DIR, 'original');
 const PROCESSED_DIR = path.join(UPLOADS_DIR, 'processed');
+const AVATARS_DIR = path.join(UPLOADS_DIR, 'avatars');
 
 // Ensure upload directories exist
 try {
   if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   if (!fs.existsSync(ORIGINAL_DIR)) fs.mkdirSync(ORIGINAL_DIR, { recursive: true });
   if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true });
+  if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
   console.log('Upload directories initialized');
 } catch (err) {
   console.error('Failed to create upload directories:', err);
@@ -160,6 +162,15 @@ async function transcodeStoryToMp4(inputPath, outputPath) {
 const storyUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+// Avatar upload storage - use disk storage
+const avatarStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, AVATARS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    cb(null, `avatar-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  }
 });
 
 const avatarUpload = multer({
