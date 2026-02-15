@@ -2066,6 +2066,7 @@ async function attachPostFlags(posts, userId) {
 
 // Create post
 app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, res) => {
+  try {
   const { caption, location, taggedUsers } = req.body || {};
   const files = req.files || [];
   
@@ -2075,14 +2076,19 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
   
   // Upload all files to Firebase
   const mediaPromises = files.map(async (f) => {
-    const result = await firebaseStorage.uploadToFirebase(f);
-    const firebaseUrl = typeof result === 'string' ? result : result.url;
-    return {
-      type: f.mimetype.startsWith('video') ? 'video' : 'image',
-      url: firebaseUrl,
-      width: 0,
-      height: 0
-    };
+    try {
+      const result = await firebaseStorage.uploadToFirebase(f);
+      const firebaseUrl = typeof result === 'string' ? result : result.url;
+      return {
+        type: f.mimetype.startsWith('video') ? 'video' : 'image',
+        url: firebaseUrl,
+        width: 0,
+        height: 0
+      };
+    } catch (uploadErr) {
+      console.error('Firebase upload error:', uploadErr);
+      throw new Error('Failed to upload file to cloud storage');
+    }
   });
   const media = await Promise.all(mediaPromises);
   
@@ -2104,6 +2110,10 @@ app.post('/api/posts', authMiddleware, upload.array('media', 10), async (req, re
   await post.save();
   
   res.status(201).json({ post });
+  } catch (err) {
+    console.error('Create post error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create post' });
+  }
 });
 
 // Get timeline feed
