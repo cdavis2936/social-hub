@@ -2042,12 +2042,18 @@ function resolveMediaSrc(mediaUrl) {
   ) {
     // Add Cloudinary video optimization parameters
     if (mediaUrl.includes('cloudinary.com') && mediaUrl.includes('/video/')) {
-      // Add quality and format optimization for videos
-      const separator = mediaUrl.includes('?') ? '&' : '?';
       // Check if it's already a transformed URL
-      if (!mediaUrl.includes('q_auto') && !mediaUrl.includes('f_auto')) {
-        return `${mediaUrl}${separator}q_auto,f_auto`;
+      if (!mediaUrl.includes('/video/upload/')) {
+        return mediaUrl; // Not a standard Cloudinary video URL
       }
+      
+      // Insert transformation before the version number
+      // Format: .../video/upload/{transformation}/v{version}/...
+      const transformed = mediaUrl.replace(
+        '/video/upload/',
+        '/video/upload/ac_none,fl_allow_mixed,fl_force_flush,q_auto:good,f_mp4,h_720,w_1280/'
+      );
+      return transformed;
     }
     return mediaUrl;
   }
