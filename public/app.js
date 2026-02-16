@@ -2047,11 +2047,11 @@ function resolveMediaSrc(mediaUrl) {
         return mediaUrl; // Not a standard Cloudinary video URL
       }
       
-      // Insert transformation before the version number
+      // Insert transformation after /video/upload/ and before /v{version}/
       // Format: .../video/upload/{transformation}/v{version}/...
       const transformed = mediaUrl.replace(
-        '/video/upload/',
-        '/video/upload/ac_none,fl_allow_mixed,fl_force_flush,q_auto:good,f_mp4,h_720,w_1280/'
+        /(\/video\/upload\/)(\d+)/,
+        '$1q_auto:good,f_mp4,w_1280,h_720/$2'
       );
       return transformed;
     }
