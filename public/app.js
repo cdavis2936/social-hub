@@ -1266,8 +1266,9 @@ function addMessage(message, update = false) {
       bubble.appendChild(img);
     } else if (message.mediaType === 'video') {
       const video = document.createElement('video');
-      video.src = message.mediaUrl;
+      video.src = resolveMediaSrc(message.mediaUrl);
       video.controls = true;
+      video.crossOrigin = 'anonymous';
       bubble.appendChild(video);
     } else if (message.mediaType === 'voice') {
       const voiceDiv = document.createElement('div');
@@ -2031,12 +2032,23 @@ function normalizeStory(story) {
 
 function resolveMediaSrc(mediaUrl) {
   if (!mediaUrl) return '';
+  
+  // Handle already complete URLs
   if (
     mediaUrl.startsWith('http://') ||
     mediaUrl.startsWith('https://') ||
     mediaUrl.startsWith('data:') ||
     mediaUrl.startsWith('blob:')
   ) {
+    // Add Cloudinary video optimization parameters
+    if (mediaUrl.includes('cloudinary.com') && mediaUrl.includes('/video/')) {
+      // Add quality and format optimization for videos
+      const separator = mediaUrl.includes('?') ? '&' : '?';
+      // Check if it's already a transformed URL
+      if (!mediaUrl.includes('q_auto') && !mediaUrl.includes('f_auto')) {
+        return `${mediaUrl}${separator}q_auto,f_auto`;
+      }
+    }
     return mediaUrl;
   }
   if (mediaUrl.startsWith('/')) return `${window.location.origin}${mediaUrl}`;
@@ -2142,6 +2154,7 @@ function renderStoryAt(index) {
       storyVideo.setAttribute('playsinline', '');
       storyVideo.setAttribute('webkit-playsinline', '');
       storyVideo.controls = true;
+      storyVideo.crossOrigin = 'anonymous';
       storyVideo.load();
     }
     storyVideo.play().catch(() => {});
@@ -2375,6 +2388,8 @@ if (storyUpload) storyUpload.addEventListener('change', async (e) => {
   if (!files.length) return;
 
   const uploaded = [];
+  const errors = [];
+  
   for (const file of files) {
     const formData = new FormData();
     formData.append('media', file);
@@ -2388,6 +2403,7 @@ if (storyUpload) storyUpload.addEventListener('change', async (e) => {
       if (data?.story) uploaded.push(data.story);
     } catch (err) {
       console.error('Story upload failed for file:', file.name, err);
+      errors.push(`${file.name}: ${err.message}`);
     }
   }
 
@@ -2395,8 +2411,10 @@ if (storyUpload) storyUpload.addEventListener('change', async (e) => {
     // Refresh both sections
     await loadStories();
   }
-  if (uploaded.length !== files.length) {
-    alert(`Uploaded ${uploaded.length}/${files.length} stories`);
+  if (errors.length > 0) {
+    alert(`Upload issues: ${errors.join('\n')}`);
+  } else if (uploaded.length > 0) {
+    alert('Story uploaded successfully!');
   }
   if (storyCaption) storyCaption.value = '';
   storyUpload.value = '';
@@ -2949,6 +2967,7 @@ function createReelUploadButton() {
   reelFileInput = document.createElement('input');
   reelFileInput.type = 'file';
   reelFileInput.accept = 'video/*';
+  reelFileInput.setAttribute('capture', 'environment'); // Allow camera access on mobile
   reelFileInput.style.display = 'none';
   reelFileInput.onchange = handleReelUpload;
   document.body.appendChild(reelFileInput);
@@ -2980,10 +2999,11 @@ function renderReels() {
     thumb.className = 'reel-thumb';
     
     const video = document.createElement('video');
-    video.src = reel.videoUrl || reel.sourceVideoUrl;
+    video.src = resolveMediaSrc(reel.videoUrl || reel.sourceVideoUrl);
     video.muted = true;
     video.loop = true;
     video.playsInline = true;
+    video.crossOrigin = 'anonymous';
     
     const overlay = document.createElement('div');
     overlay.className = 'reel-thumb-overlay';
@@ -3061,7 +3081,8 @@ function openReelViewer(reel) {
   
   // Populate reel data
   const video = el('reelVideo');
-  video.src = reel.videoUrl || reel.sourceVideoUrl;
+  video.src = resolveMediaSrc(reel.videoUrl || reel.sourceVideoUrl);
+  video.crossOrigin = 'anonymous';
   
   el('reelUsername').textContent = reel.username || 'User';
   el('reelUserAvatar').textContent = (reel.username || 'U').charAt(0).toUpperCase();
@@ -3220,10 +3241,11 @@ function createPostElement(post) {
       const media = post.media[0];
       if (media.type === 'video') {
         const video = document.createElement('video');
-        video.src = media.url;
+        video.src = resolveMediaSrc(media.url);
         video.controls = true;
         video.playsInline = true;
         video.preload = 'metadata';
+        video.crossOrigin = 'anonymous';
         video.style.cssText = 'width:100%;max-height:400px;border-radius:8px;';
         mediaContainer.appendChild(video);
       } else {
@@ -3238,11 +3260,12 @@ function createPostElement(post) {
       post.media.forEach((m) => {
         if (m.type === 'video') {
           const video = document.createElement('video');
-          video.src = m.url;
+          video.src = resolveMediaSrc(m.url);
           video.controls = true;
           video.playsInline = true;
           video.preload = 'metadata';
-          video.style.cssText = 'width:200px;height:250px;object-fit:cover;border-radius:4px;scroll-snap-align:start;';
+          video.crossOrigin = 'anonymous';
+          video.style.cssText = 'width:200px;height:250px;object-fit:cover;border-radius:4px;scroll-snap-align:start';
           carousel.appendChild(video);
         } else {
           const img = document.createElement('img');
@@ -3376,8 +3399,16 @@ function createPostButton() {
   postFileInput.type = 'file';
   postFileInput.accept = 'image/*,video/*';
   postFileInput.multiple = true;
+  postFileInput.setAttribute('capture', 'environment'); // Allow camera access on mobile
   postFileInput.style.display = 'none';
   postFileInput.onchange = handlePostUpload;
+  
+  // Add error handler for debugging
+  postFileInput.onerror = (err) => {
+    console.error('File input error:', err);
+    alert('Error selecting file. Please try again.');
+  };
+  
   document.body.appendChild(postFileInput);
   
   createPostBtn.onclick = () => postFileInput.click();
@@ -3387,8 +3418,9 @@ async function handlePostUpload(e) {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
   
-  const caption = prompt('Enter a caption for your post:');
-  const location = prompt('Enter location (optional):');
+  // Use a modal/prompt alternative that works on mobile
+  const caption = await showMobilePrompt('Enter a caption for your post (optional):');
+  const location = await showMobilePrompt('Enter location (optional):');
   
   const formData = new FormData();
   files.forEach(f => formData.append('media', f));
@@ -3415,6 +3447,20 @@ async function handlePostUpload(e) {
   }
   
   e.target.value = '';
+}
+
+// Mobile-friendly prompt alternative
+function showMobilePrompt(message) {
+  return new Promise((resolve) => {
+    // Try native prompt first (works on some mobile browsers)
+    const result = prompt(message);
+    if (result !== null) {
+      resolve(result);
+      return;
+    }
+    // If prompt returns null (cancelled or not supported), resolve with empty string
+    resolve('');
+  });
 }
 
 // ============================================
@@ -3474,12 +3520,13 @@ function renderExploreResults() {
 
     if (firstMedia?.type === 'video') {
       const video = document.createElement('video');
-      video.src = firstMedia.url;
+      video.src = resolveMediaSrc(firstMedia.url);
       video.muted = true;
       video.autoplay = true;
       video.loop = true;
       video.playsInline = true;
       video.preload = 'metadata';
+      video.crossOrigin = 'anonymous';
       video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
       // Best-effort autoplay in browsers with strict policies.
       video.play().catch(() => {});

@@ -27,6 +27,42 @@ const isCloudinaryReady = () => {
   return !!process.env.CLOUDINARY_CLOUD_NAME;
 };
 
+// Get upload options based on file type
+const getUploadOptions = (file) => {
+  const isVideo = file.mimetype?.startsWith('video/') || 
+    (file.originalname && file.originalname.match(/\.(mp4|webm|mov|m4v|avi|mkv)$/i));
+  
+  const baseOptions = {
+    resource_type: 'auto',
+    use_filename: true,
+    unique_filename: true,
+    overwrite: false
+  };
+
+  if (isVideo) {
+    // Add video-specific options for better browser compatibility
+    return {
+      ...baseOptions,
+      eager: [
+        { streaming_profile: 'auto', format: 'mp4' }
+      ],
+      eager_async: true,
+      // Ensure video is processed for web playback
+      transformation: [
+        { quality: 'auto', fetch_format: 'auto' }
+      ]
+    };
+  }
+
+  // For images, optimize for web
+  return {
+    ...baseOptions,
+    transformation: [
+      { quality: 'auto', fetch_format: 'auto' }
+    ]
+  };
+};
+
 /**
  * Upload to Cloudinary Storage.
  * Supports both memory buffer and disk file paths.
@@ -46,7 +82,10 @@ const uploadToCloudinary = async (fileOrPath, folder = 'uploads') => {
 
     const result = await cloudinary.uploader.upload(localPath, {
       folder,
-      resource_type: 'auto'
+      resource_type: 'auto',
+      use_filename: true,
+      unique_filename: true,
+      overwrite: false
     });
 
     return {
@@ -62,10 +101,12 @@ const uploadToCloudinary = async (fileOrPath, folder = 'uploads') => {
     // Memory storage (buffer)
     if (file.buffer) {
       return new Promise((resolve, reject) => {
+        const uploadOptions = getUploadOptions(file);
+        
         const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder,
-            resource_type: 'auto'
+            ...uploadOptions
           },
           (error, result) => {
             if (error) {
@@ -93,7 +134,7 @@ const uploadToCloudinary = async (fileOrPath, folder = 'uploads') => {
 
       const result = await cloudinary.uploader.upload(file.path, {
         folder,
-        resource_type: 'auto'
+        ...getUploadOptions(file)
       });
 
       return {

@@ -100,6 +100,35 @@ async function processReelJob({ reelId, uploadsDir, io, publicBaseUrl, maxDurati
     return;
   }
 
+  // Check if source is a Cloudinary URL - if so, skip processing and use it directly
+  const isCloudinaryUrl = reel.sourceVideoUrl && reel.sourceVideoUrl.includes('cloudinary.com');
+  
+  if (isCloudinaryUrl) {
+    // Cloudinary already optimizes videos, so we can use the URL directly
+    reel.status = 'READY';
+    reel.videoUrl = reel.sourceVideoUrl; // Use Cloudinary URL as the video URL
+    reel.processedAt = new Date();
+    reel.moderationReason = null;
+    await reel.save();
+
+    const user = await User.findById(reel.userId);
+    io.emit('new_reel', {
+      id: reel._id.toString(),
+      userId: reel.userId.toString(),
+      username: user?.username,
+      videoUrl: reel.videoUrl,
+      sourceVideoUrl: reel.sourceVideoUrl,
+      caption: reel.caption,
+      likes: reel.likes,
+      status: reel.status,
+      createdAt: reel.createdAt
+    });
+
+    io.emit('reel_updated', { reelId: reel._id.toString(), status: reel.status, reason: null });
+    return;
+  }
+
+  // Original processing logic for local uploads
   const hasFfmpeg = await checkBinary('ffmpeg');
   const hasFfprobe = await checkBinary('ffprobe');
   if (!hasFfmpeg || !hasFfprobe) {
