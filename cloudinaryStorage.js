@@ -41,25 +41,21 @@ const getUploadOptions = (file) => {
 
   if (isVideo) {
     // Add video-specific options for better browser compatibility
+    // Note: Don't use eager streaming_profile as it doesn't work with all formats
     return {
       ...baseOptions,
-      eager: [
-        { streaming_profile: 'auto', format: 'mp4' }
-      ],
-      eager_async: true,
-      // Ensure video is processed for web playback
-      transformation: [
-        { quality: 'auto', fetch_format: 'auto' }
-      ]
+      // Use eager transformations for images only
+      eager_async: true
     };
   }
 
   // For images, optimize for web
   return {
     ...baseOptions,
-    transformation: [
-      { quality: 'auto', fetch_format: 'auto' }
-    ]
+    eager: [
+      { quality: 'auto', fetch_format: 'auto', width: 2000 }
+    ],
+    eager_async: true
   };
 };
 
