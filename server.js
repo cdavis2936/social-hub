@@ -2393,11 +2393,6 @@ app.post('/api/posts/:postId/share-to-story', authMiddleware, async (req, res) =
 });
 
 
-  
-  const query = q.trim().toLowerCase();
-  const skip = (Number(page) - 1) * Number(limit);
-  
-
 
 // ============================================
 // Ads / Post Boosting
