@@ -1719,78 +1719,7 @@ input:focus {
   color: #fff;
 }
 
-/* ============================================
-   Reels Grid (Sidebar)
-   ============================================ */
-.reels-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
-  padding: 4px;
-}
 
-.reel-thumb {
-  aspect-ratio: 9/16;
-  background: #f0f0f0;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  cursor: pointer;
-  position: relative;
-}
-
-.reel-thumb video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.reel-thumb-overlay {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.85rem;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-.reel-info {
-  background: #fff;
-  border-radius: 0 0 8px 8px;
-}
-
-.reel-user {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.reel-user .avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--whatsapp-green);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-}
-
-.reel-actions {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.reel-actions .btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
 
 /* ============================================
    Stories Feature

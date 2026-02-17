@@ -15,16 +15,12 @@ const multer = require('multer');
 const { execFile } = require('child_process');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
-const { Queue } = require('bullmq');
-const IORedis = require('ioredis');
-const { normalizeCaption, processReelJob } = require('./reelProcessor');
 const firebaseStorage = require('./firebaseStorage');
 const cloudinaryStorage = require('./cloudinaryStorage');
 
 // Models
 const User = require('./models/User');
 const Message = require('./models/Message');
-const Reel = require('./models/Reel');
 const Group = require('./models/Group');
 const Story = require('./models/Story');
 const CallLog = require('./models/CallLog');
@@ -33,7 +29,6 @@ const Post = require('./models/Post');
 const PostComment = require('./models/PostComment');
 const Save = require('./models/Save');
 const Ad = require('./models/Ad');
-const Comment = require('./models/Comment');
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -96,11 +91,6 @@ const io = new Server(server, {
 });
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `${usingHttps ? 'https' : 'http'}://localhost:${PORT}`;
-const MAX_REEL_DURATION_SECONDS = Number(process.env.MAX_REEL_DURATION_SECONDS || 60);
-
-let redisConnection = null;
-let reelQueue = null;
-let queueInitAttempted = false;
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, ORIGINAL_DIR),
@@ -278,24 +268,6 @@ const sanitizeUser = (u) => ({
   createdAt: u.createdAt
 });
 
-const formatReel = async (r) => {
-  const user = await User.findById(r.userId);
-  return {
-    _id: r._id.toString(),
-    id: r._id.toString(),
-    userId: r.userId.toString(),
-    username: user?.username,
-    caption: r.caption,
-    videoUrl: r.videoUrl,
-    sourceVideoUrl: r.sourceVideoUrl,
-    likes: r.likes,
-    status: r.status,
-    moderationReason: r.moderationReason,
-    createdAt: r.createdAt,
-    processedAt: r.processedAt
-  };
-};
-
 function buildIceServers() {
   const stunUrls = String(process.env.STUN_URLS || 'stun:stun.l.google.com:19302')
     .split(',')
@@ -320,46 +292,6 @@ function buildIceServers() {
   }
 
   return servers;
-}
-
-async function enqueueReel(reelId) {
-  if (!reelQueue) {
-    await processReelJob({
-      reelId,
-      uploadsDir: UPLOADS_DIR,
-      io,
-      publicBaseUrl: PUBLIC_BASE_URL,
-      maxDurationSeconds: MAX_REEL_DURATION_SECONDS
-    });
-    return;
-  }
-
-  await reelQueue.add('process', { reelId }, { removeOnComplete: 1000, removeOnFail: 1000 });
-}
-
-async function initQueueIfAvailable() {
-  if (queueInitAttempted || !process.env.REDIS_URL) return;
-  queueInitAttempted = true;
-
-  const candidate = new IORedis(process.env.REDIS_URL, {
-    maxRetriesPerRequest: 1,
-    lazyConnect: true,
-    retryStrategy: () => null
-  });
-  candidate.on('error', () => {});
-
-  try {
-    await candidate.connect();
-    await candidate.ping();
-    redisConnection = candidate;
-    reelQueue = new Queue('reel-processing', { connection: redisConnection });
-    console.log('Reel queue enabled (Redis connected)');
-  } catch (_err) {
-    await candidate.quit().catch(() => null);
-    redisConnection = null;
-    reelQueue = null;
-    console.warn('Redis unavailable, using inline reel processing');
-  }
 }
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
@@ -1459,66 +1391,6 @@ function formatMessage(message, fromUsername) {
   };
 }
 
-app.post('/api/reels', authMiddleware, upload.single('video'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'video file is required (field: video)' });
-
-  const caption = normalizeCaption(req.body.caption || '');
-  
-  // Upload to Cloudinary
-  const result = await cloudinaryStorage.uploadToCloudinary(req.file, 'reels');
-  const firebaseUrl = typeof result === 'string' ? result : result.url;
-  
-  const reel = await Reel.create({
-    userId: req.user.id,
-    caption,
-    sourceVideoUrl: firebaseUrl,
-    status: 'PROCESSING'
-  });
-
-  io.emit('reel_updated', { reelId: reel._id.toString(), status: reel.status, reason: null });
-
-  enqueueReel(reel._id.toString()).catch(async (err) => {
-    await Reel.findByIdAndUpdate(reel._id, {
-      status: 'FAILED',
-      moderationReason: err.message.slice(0, 160)
-    });
-    io.emit('reel_updated', { reelId: reel._id.toString(), status: 'FAILED', reason: 'queue processing failed' });
-  });
-
-  const formatted = await formatReel(reel);
-  return res.status(201).json({ reel: formatted });
-});
-
-app.get('/api/reels', authMiddleware, async (_req, res) => {
-  const reels = await Reel.find({ status: 'READY' })
-    .sort({ createdAt: -1 });
-  
-  const formatted = await Promise.all(reels.map(formatReel));
-  res.json({ reels: formatted });
-});
-
-app.get('/api/reels/mine', authMiddleware, async (req, res) => {
-  const reels = await Reel.find({ userId: req.user.id })
-    .sort({ createdAt: -1 });
-  
-  const formatted = await Promise.all(reels.map(formatReel));
-  res.json({ reels: formatted });
-});
-
-app.post('/api/reels/:reelId/like', authMiddleware, async (req, res) => {
-  const reel = await Reel.findById(req.params.reelId);
-  if (!reel) return res.status(404).json({ error: 'reel not found' });
-  if (reel.status !== 'READY') return res.status(400).json({ error: 'reel is not ready yet' });
-
-  reel.likes += 1;
-  await reel.save();
-
-  io.emit('reel_liked', { reelId: reel._id.toString(), likes: reel.likes });
-  
-  const formatted = await formatReel(reel);
-  res.json({ reel: formatted });
-});
-
 // Stories API
 app.post('/api/stories', authMiddleware, storyUpload.single('media'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'media file is required' });
@@ -1883,56 +1755,9 @@ app.delete('/api/calls/:callId', authMiddleware, async (req, res) => {
   res.json({ success: true });
 });
 
-// Comments API
-app.get('/api/reels/:reelId/comments', async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
-  
-  const comments = await Comment.find({ reelId: req.params.reelId })
-    .sort({ createdAt: -1 })
-    .limit(Number(limit))
-    .skip((Number(page) - 1) * Number(limit))
-    .lean();
-  
-  const total = await Comment.countDocuments({ reelId: req.params.reelId });
-  
-  res.json({ comments, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
-});
 
-app.post('/api/reels/:reelId/comments', authMiddleware, async (req, res) => {
-  const { text } = req.body;
-  if (!text || !text.trim()) return res.status(400).json({ error: 'Comment text is required' });
-  
-  const reel = await Reel.findById(req.params.reelId);
-  if (!reel) return res.status(404).json({ error: 'Reel not found' });
-  
-  const comment = await Comment.create({
-    userId: req.user.id,
-    username: req.user.username,
-    reelId: req.params.reelId,
-    text: text.trim()
-  });
-  
-  res.json({ 
-    id: comment._id.toString(),
-    userId: comment.userId.toString(),
-    username: comment.username,
-    reelId: comment.reelId.toString(),
-    text: comment.text,
-    createdAt: comment.createdAt
-  });
-});
 
-app.delete('/api/comments/:commentId', authMiddleware, async (req, res) => {
-  const comment = await Comment.findOne({
-    _id: req.params.commentId,
-    userId: req.user.id
-  });
-  
-  if (!comment) return res.status(404).json({ error: 'Comment not found' });
-  
-  await Comment.deleteOne({ _id: req.params.commentId });
-  res.json({ success: true });
-});
+
 
 // ============================================
 // Posts API
@@ -2567,25 +2392,12 @@ app.post('/api/posts/:postId/share-to-story', authMiddleware, async (req, res) =
   res.status(201).json({ story });
 });
 
-// Get reels for search
-app.get('/api/search/reels', authMiddleware, async (req, res) => {
-  const { q, page = 1, limit = 20 } = req.query;
-  
-  if (!q || !q.trim()) return res.status(400).json({ error: 'Search query is required' });
+
   
   const query = q.trim().toLowerCase();
   const skip = (Number(page) - 1) * Number(limit);
   
-  const reels = await Reel.find({ 
-    status: 'READY',
-    caption: { $regex: query, $options: 'i' }
-  })
-  .sort({ likes: -1, createdAt: -1 })
-  .skip(skip)
-  .limit(Number(limit));
-  
-  res.json({ reels });
-});
+
 
 // ============================================
 // Ads / Post Boosting
@@ -2928,7 +2740,7 @@ io.on('connection', (socket) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, ts: new Date().toISOString(), queueEnabled: Boolean(reelQueue) });
+  res.json({ ok: true, ts: new Date().toISOString(), queueEnabled: false });
 });
 
 app.get('*', (_req, res) => {
@@ -3012,8 +2824,7 @@ async function startServer() {
 
 async function shutdown() {
   await mongoose.connection.close();
-  if (reelQueue) await reelQueue.close();
-  if (redisConnection) await redisConnection.quit();
+
   server.close(() => process.exit(0));
 }
 

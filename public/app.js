@@ -25,11 +25,11 @@ let groups = [];
 let currentGroup = null;
 let storyViewerList = [];
 let storyViewerIndex = 0;
-let reels = [];
-let currentReel = null;
-let reelComments = [];
-let currentViewingReel = null;
-let reelFileInput = null;
+
+
+
+
+
 let posts = [];
 let exploreResults = { users: [], posts: [] };
 let trendingHashtags = [];
@@ -107,8 +107,8 @@ const pinnedText = el('pinnedText');
 const pinnedTime = el('pinnedTime');
 const pinMsgBtn = el('pinMsgBtn');
 const unpinMsgBtn = el('unpinMsgBtn');
-const reelsSidebarFeed = el('reelsSidebarFeed');
-const reelsTab = el('reelsTab');
+
+
 const postsFeed = el('postsFeed');
 const exploreTab = el('exploreTab');
 const exploreSearch = el('exploreSearch');
@@ -165,7 +165,7 @@ let loadingOlderMessages = false;
 let loadedPeerId = null;
 let lastTypingResetTimeout = null;
 let userSearchTerm = '';
-let reelOutcomeNotices = new Set();
+
 
 const notificationSettings = JSON.parse(localStorage.getItem('notificationSettings') || '{"enabled":false,"sound":true,"vibrate":false}');
 
@@ -706,9 +706,7 @@ function switchToTab(tabName) {
       loadStories();
     } else if (tabName === 'calls') {
       loadCallLogs();
-    } else if (tabName === 'reels') {
-      loadReels();
-    } else if (tabName === 'posts') {
+        } else if (tabName === 'posts') {
       loadPosts();
     } else if (tabName === 'explore') {
       loadExplore();
@@ -2817,33 +2815,9 @@ function setupSocket() {
     }
   });
 
-  // Reels real-time events
-  socket.on('reel_updated', ({ reelId, status, reason }) => {
-    console.log('Reel updated:', reelId, status, reason || '');
-    if ((status === 'REJECTED' || status === 'FAILED') && reason) {
-      const noticeKey = `${reelId}:${status}:${reason}`;
-      if (!reelOutcomeNotices.has(noticeKey)) {
-        reelOutcomeNotices.add(noticeKey);
-        alert(`Reel ${status.toLowerCase()}: ${reason}`);
-      }
-    }
-    if (activeTab === 'reels') {
-      loadReels();
-    }
-  });
 
-  socket.on('reel_liked', ({ reelId, likes }) => {
-    const idx = reels.findIndex(r => r._id === reelId);
-    if (idx !== -1) {
-      reels[idx].likes = likes;
-      renderReels();
-    }
-    if (currentViewingReel && currentViewingReel._id === reelId) {
-      currentViewingReel.likes = likes;
-      const likesEl = el('reelLikesCount');
-      if (likesEl) likesEl.textContent = likes;
-    }
-  });
+
+
 
   socket.on('post_liked', ({ postId, likesCount, isLiked }) => {
     const idx = posts.findIndex((p) => p._id === postId);
@@ -2903,291 +2877,27 @@ function setupSocket() {
   });
 }
 
-// Reels
-async function loadReels() {
-  try {
-    const data = await api('/api/reels');
-    reels = data.reels || [];
-    renderReels();
-    createReelUploadButton();
-  } catch (err) {
-    console.error('Failed to load reels:', err);
-    reels = [];
-    renderReels();
-  }
-}
 
-async function handleReelUpload(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  
-  // Check file size (max 100MB)
-  if (file.size > 100 * 1024 * 1024) {
-    alert('Video file is too large. Maximum size is 100MB.');
-    return;
-  }
-  
-  const caption = prompt('Enter a caption for your reel (optional):');
-  if (caption === null) return; // Cancelled
-  
-  const formData = new FormData();
-  formData.append('video', file);
-  if (caption) formData.append('caption', caption);
-  
-  try {
-    const response = await fetch('/api/reels', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData
-    });
-    
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Upload failed');
-    }
-    
-    alert('Reel uploaded successfully! It will be available once processed.');
-    
-    // Reload reels
-    loadReels();
-  } catch (err) {
-    console.error('Failed to upload reel:', err);
-    alert('Failed to upload reel: ' + err.message);
-  }
-  
-  // Reset input
-  e.target.value = '';
-}
 
-function createReelUploadButton() {
-  // Re-get the element in case it's not available at startup
-  const reelsTabEl = el('reelsTab');
-  if (!reelsTabEl) {
-    console.warn('Reels tab not found');
-    return;
-  }
-  
-  if (el('reelUploadBtn')) return;
-  
-  // Create hidden file input
-  reelFileInput = document.createElement('input');
-  reelFileInput.type = 'file';
-  reelFileInput.accept = 'video/*';
-  reelFileInput.setAttribute('capture', 'environment'); // Allow camera access on mobile
-  reelFileInput.style.display = 'none';
-  reelFileInput.onchange = handleReelUpload;
-  document.body.appendChild(reelFileInput);
-  
-  // Create upload button in reels tab
-  const uploadBtn = document.createElement('button');
-  uploadBtn.id = 'reelUploadBtn';
-  uploadBtn.className = 'btn';
-  uploadBtn.style.cssText = 'width:100%;margin:8px 0;padding:12px;background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;';
-  uploadBtn.innerHTML = '📹 Upload Reel';
-  uploadBtn.onclick = () => reelFileInput.click();
-  
-  // Insert at top of reels tab
-  reelsTabEl.insertBefore(uploadBtn, reelsTabEl.firstChild);
-}
 
-function renderReels() {
-  if (!reelsSidebarFeed) return;
-  
-  reelsSidebarFeed.innerHTML = '';
-  
-  if (reels.length === 0) {
-    reelsSidebarFeed.innerHTML = '<div class="list-empty">No reels yet. Be the first to upload!</div>';
-    return;
-  }
-  
-  reels.forEach(reel => {
-    const thumb = document.createElement('div');
-    thumb.className = 'reel-thumb';
-    
-    const video = document.createElement('video');
-    video.src = resolveMediaSrc(reel.videoUrl || reel.sourceVideoUrl);
-    video.muted = true;
-    video.loop = true;
-    video.playsInline = true;
-    video.crossOrigin = 'anonymous';
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'reel-thumb-overlay';
-    overlay.innerHTML = `<span>❤️ ${reel.likes || 0}</span>`;
-    
-    thumb.appendChild(video);
-    thumb.appendChild(overlay);
-    
-    thumb.onclick = () => openReelViewer(reel);
-    
-    // Play on hover
-    thumb.onmouseenter = () => video.play().catch(() => {});
-    thumb.onmouseleave = () => {
-      video.pause();
-      video.currentTime = 0;
-    };
-    
-    reelsSidebarFeed.appendChild(thumb);
-  });
-}
 
-function openReelViewer(reel) {
-  currentViewingReel = reel;
-  
-  // Create modal if not exists
-  let reelModal = el('reelModal');
-  if (!reelModal) {
-    reelModal = document.createElement('div');
-    reelModal.id = 'reelModal';
-    reelModal.className = 'story-modal';
-    reelModal.innerHTML = `
-      <div class="story-viewer">
-        <div class="story-progress">
-          <div class="progress-bar" id="reelProgressBar"></div>
-        </div>
-        <button class="story-close" id="closeReelBtn">&times;</button>
-        <div class="story-content" id="reelContent">
-          <video id="reelVideo" controls style="max-height:80vh;max-width:100%;"></video>
-        </div>
-        <div class="reel-info" id="reelInfo" style="padding:16px;background:#fff;border-top:1px solid #ddd;">
-          <div class="reel-user" style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-            <div class="avatar" id="reelUserAvatar" style="width:40px;height:40px;border-radius:50%;background:#ccc;display:flex;align-items:center;justify-content:center;"></div>
-            <div>
-              <div class="reel-username" id="reelUsername" style="font-weight:600;"></div>
-              <div class="reel-caption" id="reelCaption" style="color:#666;font-size:14px;"></div>
-            </div>
-          </div>
-          <div class="reel-actions" style="display:flex;gap:16px;margin-bottom:12px;">
-            <button class="btn" id="likeReelBtn" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;">
-              <span>❤️</span> <span id="reelLikesCount">0</span> Likes
-            </button>
-            <button class="btn btn-secondary" id="viewCommentsBtn" style="flex:1;">View Comments</button>
-          </div>
-          <div class="reel-comments-section" id="reelCommentsSection" style="display:none;">
-            <div class="comments-list" id="reelCommentsList" style="max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
-            <div style="display:flex;gap:8px;">
-              <input type="text" id="reelCommentInput" placeholder="Add a comment..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:20px;">
-              <button class="btn" id="sendReelCommentBtn">Send</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(reelModal);
-    
-    // Event listeners
-    el('closeReelBtn').onclick = () => closeReelViewer();
-    el('likeReelBtn').onclick = () => likeCurrentReel();
-    el('viewCommentsBtn').onclick = () => toggleReelComments();
-    el('sendReelCommentBtn').onclick = () => sendReelComment();
-    el('reelCommentInput').onkeypress = (e) => {
-      if (e.key === 'Enter') sendReelComment();
-    };
-  }
-  
-  // Populate reel data
-  const video = el('reelVideo');
-  video.src = resolveMediaSrc(reel.videoUrl || reel.sourceVideoUrl);
-  video.crossOrigin = 'anonymous';
-  
-  el('reelUsername').textContent = reel.username || 'User';
-  el('reelUserAvatar').textContent = (reel.username || 'U').charAt(0).toUpperCase();
-  el('reelCaption').textContent = reel.caption || '';
-  el('reelLikesCount').textContent = reel.likes || 0;
-  
-  reelModal.classList.remove('hidden');
-  
-  // Load comments
-  loadReelComments(reel._id);
-}
 
-function closeReelViewer() {
-  const reelModal = el('reelModal');
-  if (reelModal) {
-    reelModal.classList.add('hidden');
-    const video = el('reelVideo');
-    if (video) video.pause();
-  }
-  currentViewingReel = null;
-}
 
-async function likeCurrentReel() {
-  if (!currentViewingReel) return;
-  
-  try {
-    const data = await api(`/api/reels/${currentViewingReel._id}/like`, 'POST');
-    if (data.reel) {
-      currentViewingReel.likes = data.reel.likes;
-      el('reelLikesCount').textContent = data.reel.likes || 0;
-      
-      // Update in reels array
-      const idx = reels.findIndex(r => r._id === currentViewingReel._id);
-      if (idx !== -1) reels[idx].likes = data.reel.likes;
-      renderReels();
-    }
-  } catch (err) {
-    console.error('Failed to like reel:', err);
-    alert('Failed to like reel');
-  }
-}
 
-async function loadReelComments(reelId) {
-  try {
-    const data = await api(`/api/reels/${reelId}/comments`);
-    reelComments = data.comments || [];
-    renderReelComments();
-  } catch (err) {
-    console.error('Failed to load comments:', err);
-    reelComments = [];
-  }
-}
 
-function renderReelComments() {
-  const list = el('reelCommentsList');
-  if (!list) return;
-  
-  list.innerHTML = '';
-  
-  if (reelComments.length === 0) {
-    list.innerHTML = '<div style="color:#999;text-align:center;padding:12px;">No comments yet</div>';
-    return;
-  }
-  
-  reelComments.forEach(comment => {
-    const item = document.createElement('div');
-    item.style.padding = '8px 0';
-    item.style.borderBottom = '1px solid #f0f0f0';
-    item.innerHTML = `<strong>${escapeHtml(comment.username)}</strong> ${escapeHtml(comment.text)}`;
-    list.appendChild(item);
-  });
-}
 
-function toggleReelComments() {
-  const section = el('reelCommentsSection');
-  if (section) {
-    section.style.display = section.style.display === 'none' ? 'block' : 'none';
-  }
-}
 
-async function sendReelComment() {
-  if (!currentViewingReel) return;
-  
-  const input = el('reelCommentInput');
-  const text = input.value.trim();
-  if (!text) return;
-  
-  try {
-    const data = await api(`/api/reels/${currentViewingReel._id}/comments`, 'POST', { text });
-    if (data.comment) {
-      reelComments.unshift(data.comment);
-      renderReelComments();
-      input.value = '';
-    }
-  } catch (err) {
-    console.error('Failed to add comment:', err);
-    alert('Failed to add comment');
-  }
-}
+
+
+
+
+
+
+
+
+
+
+
 
 // ============================================
 // Posts / Timeline

@@ -5,8 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "worker": "node worker/reelWorker.js"
+    "dev": "node server.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

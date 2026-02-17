@@ -2,7 +2,7 @@
  * Script to completely clean up all media records and start fresh with Firebase.
  * Run with: node scripts/cleanup-local-paths.js
  * 
- * WARNING: This will delete ALL stories, posts with media, messages with media, and reels!
+ * WARNING: This will delete ALL stories, posts with media, and messages with media!
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -16,7 +16,7 @@ async function cleanup() {
   const Story = require('../models/Story');
   const Post = require('../models/Post');
   const Message = require('../models/Message');
-  const Reel = require('../models/Reel');
+
 
   // Delete ALL stories (they all have media)
   const storyResult = await Story.deleteMany({});
@@ -34,9 +34,7 @@ async function cleanup() {
   });
   console.log(`Deleted ${messageResult.deletedCount} messages with media`);
 
-  // Delete ALL reels (they all have video)
-  const reelResult = await Reel.deleteMany({});
-  console.log(`Deleted ${reelResult.deletedCount} reels`);
+
 
   console.log('\n✓ Cleanup complete! All media records have been deleted.');
   console.log('New uploads will use Firebase Storage.');
