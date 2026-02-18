@@ -10,6 +10,7 @@ let peerConnection = null;
 let localStream = null;
 let currentCallPeer = null;
 let rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+let pendingIceCandidates = [];
 
 // Fetch ICE configuration from server (includes TURN servers)
 async function fetchIceConfig() {
@@ -88,6 +89,9 @@ const callModal = el('callModal');
 const callUsername = el('callUsername');
 const callAvatar = el('callAvatar');
 const callStatus = el('callStatus');
+const incomingCallActions = el('incomingCallActions');
+const acceptCallBtn = el('acceptCallBtn');
+const rejectCallBtn = el('rejectCallBtn');
 const chatStatus = el('chatStatus');
 const storiesList = el('storiesList');
 const storyUpload = el('storyUpload');
@@ -476,6 +480,7 @@ const api = async (path, opts = {}, payload) => {
   if (token && me) {
     try {
       await loadMeProfile();
+      await fetchIceConfig();
       setupSocket();
       await refreshUsers();
       await loadChats();
@@ -2844,44 +2849,54 @@ function setupSocket() {
   });
 
   socket.on('call_offer', async ({ fromUserId, fromUsername, offer, callType }) => {
+    if (peerConnection || pendingIncomingCall) {
+      socket.emit('call_end', { toUserId: fromUserId });
+      return;
+    }
     currentCallPeer = { id: fromUserId, username: fromUsername };
-    currentCallType = callType === 'video' ? 'video' : 'audio';
+    currentCallType = callType === 'video' ? 'video' : 'voice';
     callStartTime = 0; // Will be set when call is accepted
+    pendingIncomingCall = { fromUserId, fromUsername, offer, callType: currentCallType };
     callUsername.textContent = `@${fromUsername}`;
     callAvatar.textContent = fromUsername.charAt(0).toUpperCase();
     callStatus.textContent = `Incoming ${currentCallType} call...`;
+    incomingCallActions?.classList.remove('hidden');
     callModal.classList.remove('hidden');
-    
-    try {
-      await startCall(fromUserId, currentCallType === 'video', offer);
-    } catch (err) {
-      console.error('Failed to accept incoming call:', err);
-      callModal.classList.add('hidden');
-      // Log missed/declined call
-      logCall(fromUserId, fromUsername, currentCallType, 'declined', 0).catch(() => {});
-      endCall(true);
-      alert(`Call failed: ${err.message}`);
-    }
   });
 
   socket.on('call_answer', async ({ answer }) => {
     if (peerConnection) {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-      callStatus.textContent = 'Call connected';
-      callStartTime = Date.now(); // Start tracking duration
+      try {
+        if (peerConnection.signalingState === 'have-local-offer') {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+          await flushPendingIceCandidates();
+        }
+        callStatus.textContent = 'Connecting...';
+      } catch (err) {
+        console.error('Failed to apply call answer:', err);
+      }
     }
   });
 
   socket.on('ice_candidate', async ({ candidate }) => {
     if (peerConnection && candidate) {
       try {
-        await peerConnection.addIceCandidate(candidate);
-      } catch (_e) {}
+        const rtcCandidate = new RTCIceCandidate(candidate);
+        if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+          await peerConnection.addIceCandidate(rtcCandidate);
+        } else {
+          pendingIceCandidates.push(rtcCandidate);
+        }
+      } catch (_e) {
+        // Ignore malformed candidates.
+      }
     }
   });
 
   socket.on('call_end', () => {
-    endCall(true);
+    const duration = callStartTime > 0 ? Math.round((Date.now() - callStartTime) / 1000) : 0;
+    const status = callStartTime > 0 ? 'answered' : 'missed';
+    endCall(true, status, duration);
     callModal.classList.add('hidden');
   });
 }
@@ -3211,17 +3226,64 @@ async function getUserMediaSafe(constraints) {
   throw new Error(`Media devices API is unavailable in this browser/context.${secureHint}`);
 }
 
+async function flushPendingIceCandidates() {
+  if (!peerConnection || !pendingIceCandidates.length) return;
+  const candidates = pendingIceCandidates.splice(0, pendingIceCandidates.length);
+  for (const candidate of candidates) {
+    try {
+      await peerConnection.addIceCandidate(candidate);
+    } catch (_err) {
+      // Ignore invalid/stale candidates from race conditions.
+    }
+  }
+}
+
 async function startCall(peerId, withVideo, offer) {
+  pendingIceCandidates = [];
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+
   localStream = await getUserMediaSafe({ audio: true, video: withVideo });
   localVideo.srcObject = localStream;
+  localVideo.muted = true;
+  localVideo.play().catch(() => {});
   
-  peerConnection = new RTCPeerConnection(rtcConfig);
+  peerConnection = new RTCPeerConnection({
+    ...rtcConfig,
+    iceCandidatePoolSize: 8
+  });
   peerConnection.ontrack = (evt) => {
     remoteVideo.srcObject = evt.streams[0];
+    remoteVideo.play().catch(() => {});
   };
   peerConnection.onicecandidate = (evt) => {
     if (evt.candidate) {
       socket.emit('ice_candidate', { toUserId: peerId, candidate: evt.candidate });
+    }
+  };
+  peerConnection.onconnectionstatechange = () => {
+    if (!peerConnection) return;
+    const state = peerConnection.connectionState;
+    if (state === 'connected') {
+      if (!callStartTime) callStartTime = Date.now();
+      callStatus.textContent = 'Call connected';
+      return;
+    }
+    if (state === 'connecting') {
+      callStatus.textContent = 'Connecting...';
+      return;
+    }
+    if (state === 'failed') {
+      const duration = callStartTime > 0 ? Math.round((Date.now() - callStartTime) / 1000) : 0;
+      endCall(false, callStartTime > 0 ? 'answered' : 'missed', duration);
+      callModal.classList.add('hidden');
+      alert('Call connection failed. Check network or TURN server settings.');
     }
   };
 
@@ -3231,10 +3293,11 @@ async function startCall(peerId, withVideo, offer) {
 
   if (offer) {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    await flushPendingIceCandidates();
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
     socket.emit('call_answer', { toUserId: peerId, answer });
-    callStatus.textContent = 'Call connected';
+    callStatus.textContent = 'Connecting...';
   } else {
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -3270,10 +3333,15 @@ function endCall(fromRemote = false, status = 'missed', duration = 0) {
   }
   
   if (socket && currentCallPeer) {
-    socket.emit('call_end', { toUserId: currentCallPeer.id });
+    if (!fromRemote) socket.emit('call_end', { toUserId: currentCallPeer.id });
   }
+  callStartTime = 0;
+  pendingIncomingCall = null;
+  incomingCallActions?.classList.add('hidden');
+  pendingIceCandidates = [];
   currentCallPeer = null;
 }
+
 
 // Add call notification to chat
 function addCallNotification(peerId, peerUsername, callType, callStatus, duration) {
@@ -3768,13 +3836,16 @@ messageForm.addEventListener('submit', (e) => {
 });
 
 let callStartTime = 0;
-let currentCallType = 'audio';
+let currentCallType = 'voice';
+let pendingIncomingCall = null;
 
 async function startOutgoingCall(withVideo) {
   if (!currentPeer) return;
+  pendingIncomingCall = null;
+  incomingCallActions?.classList.add('hidden');
   currentCallPeer = { id: currentPeer.id, username: currentPeer.username };
-  currentCallType = withVideo ? 'video' : 'audio';
-  callStartTime = Date.now();
+  currentCallType = withVideo ? 'video' : 'voice';
+  callStartTime = 0;
   callUsername.textContent = `@${currentPeer.username}`;
   callAvatar.textContent = currentPeer.username.charAt(0).toUpperCase();
   callStatus.textContent = 'Calling...';
@@ -3799,6 +3870,38 @@ videoCallBtn.addEventListener('click', () => {
   startOutgoingCall(true);
 });
 
+acceptCallBtn?.addEventListener('click', async () => {
+  if (!pendingIncomingCall) return;
+  incomingCallActions?.classList.add('hidden');
+  callStatus.textContent = 'Connecting...';
+  try {
+    await startCall(
+      pendingIncomingCall.fromUserId,
+      pendingIncomingCall.callType === 'video',
+      pendingIncomingCall.offer
+    );
+    pendingIncomingCall = null;
+  } catch (err) {
+    console.error('Failed to accept incoming call:', err);
+    if (socket && currentCallPeer) {
+      socket.emit('call_end', { toUserId: currentCallPeer.id });
+    }
+    callModal.classList.add('hidden');
+    endCall(true);
+    alert(`Call failed: ${err.message}`);
+  }
+});
+
+rejectCallBtn?.addEventListener('click', () => {
+  if (socket && currentCallPeer) {
+    socket.emit('call_end', { toUserId: currentCallPeer.id });
+  }
+  pendingIncomingCall = null;
+  incomingCallActions?.classList.add('hidden');
+  callModal.classList.add('hidden');
+  endCall(true, 'declined', 0);
+});
+
 backToChatsBtn?.addEventListener('click', () => {
   appSection.classList.remove('active-chat');
   currentPeer = null;
@@ -3806,7 +3909,7 @@ backToChatsBtn?.addEventListener('click', () => {
 
 endCallBtn.addEventListener('click', () => {
   const duration = callStartTime > 0 ? Math.round((Date.now() - callStartTime) / 1000) : 0;
-  const status = callStartTime > 0 ? 'answered' : 'missed';
+  const status = callStartTime > 0 ? 'answered' : (pendingIncomingCall ? 'declined' : 'missed');
   endCall(false, status, duration);
   callModal.classList.add('hidden');
 });

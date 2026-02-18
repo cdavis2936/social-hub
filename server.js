@@ -286,7 +286,7 @@ const sanitizeUser = (u) => ({
 });
 
 function buildIceServers() {
-  const stunUrls = String(process.env.STUN_URLS || 'stun:stun.l.google.com:19302')
+  const stunUrls = String(process.env.STUN_URLS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302')
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
