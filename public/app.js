@@ -39,6 +39,7 @@ let groups = [];
 let currentGroup = null;
 let storyViewerList = [];
 let storyViewerIndex = 0;
+let deferredInstallPrompt = null;
 
 
 
@@ -55,6 +56,19 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function forceInlinePlayback(mediaEl, { showControls = true } = {}) {
+  if (!mediaEl) return;
+  mediaEl.setAttribute('playsinline', '');
+  mediaEl.setAttribute('webkit-playsinline', '');
+  mediaEl.setAttribute('x-webkit-airplay', 'deny');
+  mediaEl.setAttribute('controlslist', 'nofullscreen noremoteplayback nodownload');
+  mediaEl.disablePictureInPicture = true;
+  if ('disableRemotePlayback' in mediaEl) {
+    mediaEl.disableRemotePlayback = true;
+  }
+  if (showControls) mediaEl.controls = true;
 }
 
 // Elements
@@ -117,6 +131,7 @@ const searchBar = el('searchBar');
 const searchInput = el('searchInput');
 const searchBtn = el('searchBtn');
 const closeSearchBtn = el('closeSearchBtn');
+const messageSearchResultsEl = el('searchResults');
 const pinnedMessage = el('pinnedMessage');
 const pinnedText = el('pinnedText');
 const pinnedTime = el('pinnedTime');
@@ -150,6 +165,10 @@ const storyViewersBtn = el('storyViewersBtn');
 const storyViewCount = el('storyViewCount');
 const highlightsSection = el('highlightsSection');
 const highlightsList = el('highlightsList');
+const installBanner = el('installBanner');
+const installBannerText = el('installBannerText');
+const installAppBtn = el('installAppBtn');
+const dismissInstallBtn = el('dismissInstallBtn');
 
 let currentPinnedMessage = null;
 let allMessages = []; // Store all loaded messages for search
@@ -162,12 +181,18 @@ let storyVideoRetryCount = 0;
 let storyImageRetryTimer = null;
 let storyVideoRetryTimer = null;
 let activeStoryMediaKey = '';
+let storyVideoSourceCandidates = [];
+let storyVideoSourceIndex = 0;
 let peerKeys = {};
 let chatSummaries = new Map();
 let blockedUsers = new Set(JSON.parse(localStorage.getItem('blockedUsers') || '[]'));
 let mutedUsers = new Set(JSON.parse(localStorage.getItem('mutedUsers') || '[]'));
 let archivedUsers = new Set(JSON.parse(localStorage.getItem('archivedUsers') || '[]'));
 let pinnedChats = new Set(JSON.parse(localStorage.getItem('pinnedChats') || '[]'));
+
+forceInlinePlayback(localVideo, { showControls: false });
+forceInlinePlayback(remoteVideo, { showControls: false });
+forceInlinePlayback(storyVideo, { showControls: true });
 let pendingMessageQueue = JSON.parse(localStorage.getItem('pendingMessageQueue') || '[]');
 let pendingMessageTimers = new Map();
 let currentMessagesCursor = null;
@@ -471,12 +496,70 @@ const api = async (path, opts = {}, payload) => {
   return data;
 };
 
+function isIosDevice() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function isStandaloneMode() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function hideInstallBanner() {
+  installBanner?.classList.add('hidden');
+}
+
+function showInstallBanner(text, buttonLabel = 'Install') {
+  if (!installBanner || localStorage.getItem('installBannerDismissed') === '1') return;
+  if (installBannerText) installBannerText.textContent = text;
+  if (installAppBtn) installAppBtn.textContent = buttonLabel;
+  installBanner.classList.remove('hidden');
+}
+
+function setupInstallPrompt() {
+  if (!installBanner || !installAppBtn || !dismissInstallBtn) return;
+
+  dismissInstallBtn.addEventListener('click', () => {
+    localStorage.setItem('installBannerDismissed', '1');
+    hideInstallBanner();
+  });
+
+  installAppBtn.addEventListener('click', async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      hideInstallBanner();
+      return;
+    }
+
+    if (isIosDevice() && !isStandaloneMode()) {
+      alert('On iPhone: open Share menu and tap "Add to Home Screen".');
+    }
+  });
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    showInstallBanner('Install Social Hub for a full-screen app experience on your phone.');
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    hideInstallBanner();
+  });
+
+  if (isIosDevice() && !isStandaloneMode()) {
+    showInstallBanner('Install on iPhone: Share -> Add to Home Screen.', 'How To');
+  }
+}
+
 // Elements moved to top of file
 
 // Initialize
 (async () => {
   renderAuth();
   applySettingsUI();
+  setupInstallPrompt();
   if (token && me) {
     try {
       await loadMeProfile();
@@ -728,6 +811,14 @@ document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     switchToTab(tab.dataset.tab);
   });
+});
+
+window.addEventListener('focus', () => {
+  if (activeTab === 'stories') {
+    loadStories().catch((err) => {
+      console.error('Failed to refresh stories on focus:', err);
+    });
+  }
 });
 
 // Users List
@@ -1280,8 +1371,7 @@ function addMessage(message, update = false) {
     } else if (message.mediaType === 'video') {
       const video = document.createElement('video');
       video.src = resolveMediaSrc(message.mediaUrl);
-      video.controls = true;
-      video.crossOrigin = 'anonymous';
+      forceInlinePlayback(video, { showControls: true });
       bubble.appendChild(video);
     } else if (message.mediaType === 'voice') {
       const voiceDiv = document.createElement('div');
@@ -1892,7 +1982,7 @@ function renderHighlights() {
     storyItem.appendChild(avatarDiv);
     storyItem.appendChild(info);
     
-    storyItem.onclick = () => openStoryViewer(story, highlights);
+    bindStoryOpen(storyItem, story, highlights);
     
     highlightsList.appendChild(storyItem);
   });
@@ -1960,7 +2050,7 @@ function renderMyStories() {
     storyItem.appendChild(avatarDiv);
     storyItem.appendChild(info);
     
-    storyItem.onclick = () => openStoryViewer(latestStory, userStories);
+    bindStoryOpen(storyItem, latestStory, userStories);
     
     myStoriesList.appendChild(storyItem);
   });
@@ -2023,10 +2113,26 @@ function renderStories() {
     storyItem.appendChild(avatarDiv);
     storyItem.appendChild(info);
     
-    storyItem.onclick = () => openStoryViewer(latestStory, userStories);
+    bindStoryOpen(storyItem, latestStory, userStories);
     
     storiesList.appendChild(storyItem);
   });
+}
+
+function bindStoryOpen(targetEl, story, list) {
+  if (!targetEl) return;
+  let opened = false;
+  const open = () => {
+    if (opened) return;
+    opened = true;
+    openStoryViewer(story, list);
+    setTimeout(() => { opened = false; }, 250);
+  };
+  targetEl.addEventListener('click', open);
+  targetEl.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    open();
+  }, { passive: false });
 }
 
 function normalizeStory(story) {
@@ -2057,34 +2163,51 @@ function resolveMediaSrc(mediaUrl) {
     url.startsWith('data:') ||
     url.startsWith('blob:')
   ) {
-    // Add Cloudinary video optimization parameters
-    if (url.includes('cloudinary.com') && url.includes('/video/')) {
-      // Check if it's already a transformed URL
-      if (!url.includes('/video/upload/')) {
-        return url; // Not a standard Cloudinary video URL
-      }
-      
-      // Insert transformation after /video/upload/ and before /v{version}/
-      // Format: .../video/upload/{transformation}/v{version}/...
-      const transformed = url.replace(
-        /(\/video\/upload\/)(\d+)/,
-        '$1q_auto:good,f_mp4,w_1280,h_720/$2'
-      );
-      return transformed;
-    }
     return url;
   }
   if (url.startsWith('/')) return `${window.location.origin}${url}`;
   return `${window.location.origin}/${url}`;
 }
 
+function resolveStoryMediaSrc(story) {
+  const baseUrl = resolveMediaSrc(story?.mediaUrl || '');
+  if (!baseUrl || !baseUrl.includes('cloudinary.com')) return baseUrl;
+
+  // Force widely-supported story delivery for mobile devices.
+  if ((story?.mediaType === 'video' || baseUrl.includes('/video/upload/')) && baseUrl.includes('/video/upload/')) {
+    return baseUrl.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac,q_auto:good/');
+  }
+  if ((story?.mediaType === 'image' || baseUrl.includes('/image/upload/')) && baseUrl.includes('/image/upload/')) {
+    return baseUrl.replace('/image/upload/', '/image/upload/f_auto,q_auto/');
+  }
+
+  return baseUrl;
+}
+
+function buildStoryVideoCandidates(story) {
+  const original = resolveMediaSrc(story?.mediaUrl || '');
+  if (!original) return [];
+
+  const candidates = [];
+  if (original.includes('cloudinary.com') && original.includes('/video/upload/')) {
+    candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac,q_auto:good/'));
+    candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac/'));
+    candidates.push(original.replace('/video/upload/', '/video/upload/q_auto:good/'));
+  }
+  candidates.push(original);
+  return [...new Set(candidates)];
+}
+
 function inferStoryMediaKind(mediaType, mediaUrl) {
   const urlExt = String(mediaUrl || '').split('?')[0].split('#')[0].split('.').pop().toLowerCase();
   const videoExts = new Set(['mp4', 'webm', 'ogg', 'mov', 'm4v']);
   const imageExts = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+  const normalizedUrl = String(mediaUrl || '').toLowerCase();
 
   if (imageExts.has(urlExt)) return { kind: 'image', urlExt };
   if (videoExts.has(urlExt)) return { kind: 'video', urlExt };
+  if (normalizedUrl.includes('/video/upload/')) return { kind: 'video', urlExt };
+  if (normalizedUrl.includes('/image/upload/')) return { kind: 'image', urlExt };
 
   if (mediaType === 'image') return { kind: 'image', urlExt };
   if (mediaType === 'video') return { kind: 'video', urlExt };
@@ -2135,7 +2258,7 @@ function renderStoryAt(index) {
     prevStory.mediaType !== story.mediaType ||
     prevStory.mediaUrl !== story.mediaUrl;
 
-  const mediaSrc = resolveMediaSrc(story.mediaUrl);
+  const mediaSrc = resolveStoryMediaSrc(story);
   const mediaKey = `${story.id || ''}|${story.mediaType || ''}|${story.mediaUrl || ''}`;
   if (mediaKey !== activeStoryMediaKey) {
     activeStoryMediaKey = mediaKey;
@@ -2171,16 +2294,21 @@ function renderStoryAt(index) {
     storyImage.src = '';
     storyImage.style.display = 'none';
     storyVideo.style.display = 'block';
-    if (mediaChanged || storyVideo.src !== mediaSrc) {
-      storyVideo.src = mediaSrc;
+    if (mediaChanged) {
+      storyVideoSourceCandidates = buildStoryVideoCandidates(story);
+      storyVideoSourceIndex = 0;
+    }
+    const nextSrc = storyVideoSourceCandidates[storyVideoSourceIndex] || mediaSrc;
+    if (mediaChanged || storyVideo.src !== nextSrc) {
+      storyVideo.src = nextSrc;
       storyVideo.preload = 'metadata';
-      storyVideo.setAttribute('playsinline', '');
-      storyVideo.setAttribute('webkit-playsinline', '');
-      storyVideo.controls = true;
-      storyVideo.crossOrigin = 'anonymous';
+      forceInlinePlayback(storyVideo, { showControls: true });
+      storyVideo.muted = true;
       storyVideo.load();
     }
-    storyVideo.play().catch(() => {});
+    storyVideo.play().catch(() => {
+      // Safari/iOS may block autoplay; keep controls visible for manual play.
+    });
   } else {
     // Treat as image
     storyVideo.pause();
@@ -2190,7 +2318,6 @@ function renderStoryAt(index) {
     storyImage.style.display = 'block';
     if (mediaChanged || storyImage.src !== mediaSrc) {
       storyImage.src = mediaSrc;
-      storyImage.crossOrigin = 'anonymous';
     }
   }
   
@@ -2236,6 +2363,7 @@ function openStoryViewer(story, list = null) {
   const normalizedCurrent = normalizeStory(story) || normalizedList[0];
   storyViewerList = normalizedList;
   const idx = storyViewerList.findIndex((s) => s.id === normalizedCurrent.id);
+  hideInstallBanner();
   storyModal.classList.remove('hidden');
   renderStoryAt(idx >= 0 ? idx : 0);
 }
@@ -2262,7 +2390,7 @@ storyImage?.addEventListener('error', () => {
     storyImageRetryCount += 1;
     if (storyImageRetryTimer) clearTimeout(storyImageRetryTimer);
     storyImageRetryTimer = setTimeout(() => {
-      const src = resolveMediaSrc(currentStory.mediaUrl);
+      const src = resolveStoryMediaSrc(currentStory);
       if (!src) return;
       storyImage.src = '';
       storyImage.src = src;
@@ -2285,6 +2413,17 @@ storyVideo?.addEventListener('error', () => {
   // Show error message overlay
   showStoryMediaError('Video unavailable - file may have been removed');
   
+  if (storyVideoSourceIndex < storyVideoSourceCandidates.length - 1) {
+    storyVideoSourceIndex += 1;
+    const fallbackSrc = storyVideoSourceCandidates[storyVideoSourceIndex];
+    if (fallbackSrc) {
+      storyVideo.src = fallbackSrc;
+      storyVideo.load();
+      storyVideo.play().catch(() => {});
+      return;
+    }
+  }
+
   if (storyVideoRetryCount >= STORY_MEDIA_MAX_RETRIES) {
     console.warn('Story video retry limit reached:', currentStory.mediaUrl);
     // Auto-advance to next story after max retries
@@ -2303,13 +2442,18 @@ storyVideo?.addEventListener('error', () => {
     storyVideoRetryCount += 1;
     if (storyVideoRetryTimer) clearTimeout(storyVideoRetryTimer);
     storyVideoRetryTimer = setTimeout(() => {
-      const src = resolveMediaSrc(currentStory.mediaUrl);
+      const src = resolveStoryMediaSrc(currentStory);
       if (!src) return;
       storyVideo.src = '';
       storyVideo.src = src;
       storyVideo.load();
     }, 1000);
   }
+});
+
+storyVideo?.addEventListener('loadeddata', () => {
+  const errorOverlay = document.getElementById('story-error-overlay');
+  if (errorOverlay) errorOverlay.style.display = 'none';
 });
 
 function showStoryMediaError(message) {
@@ -2667,7 +2811,9 @@ function setupSocket() {
   socket = io(window.location.origin, {
     path: '/socket.io',
     auth: { token },
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
+    upgrade: true,
+    rememberUpgrade: false,
     timeout: 20000,
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -3942,25 +4088,93 @@ searchBtn.addEventListener('click', () => {
 closeSearchBtn.addEventListener('click', () => {
   searchBar.classList.add('hidden');
   searchInput.value = '';
+  clearSearchHighlights();
+  if (messageSearchResultsEl) {
+    messageSearchResultsEl.innerHTML = '';
+    messageSearchResultsEl.classList.remove('active');
+  }
 });
+
+function clearSearchHighlights() {
+  const messageDivs = messagesEl.querySelectorAll('.message');
+  messageDivs.forEach((div) => {
+    div.style.background = '';
+    div.style.borderRadius = '';
+    div.style.outline = '';
+  });
+}
+
+function formatSearchResultTime(dateStr) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+async function jumpToSearchMessage(messageId) {
+  let target = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
+  if (!target && currentPeer) {
+    await loadMessages(currentPeer.id);
+    target = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
+  }
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.style.outline = '2px solid #25d366';
+  target.style.borderRadius = '10px';
+  setTimeout(() => {
+    if (target) target.style.outline = '';
+  }, 1400);
+
+  const video = target.querySelector('video');
+  if (video) {
+    video.play().catch(() => {});
+  }
+}
+
+function renderMessageSearchResults(items) {
+  if (!messageSearchResultsEl) return;
+  if (!items.length) {
+    messageSearchResultsEl.innerHTML = '<div class="search-result-item">No results</div>';
+    messageSearchResultsEl.classList.add('active');
+    return;
+  }
+
+  messageSearchResultsEl.innerHTML = '';
+  items.forEach((m) => {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    item.innerHTML = `
+      <div class="search-result-icon">🔎</div>
+      <div class="search-result-preview">${escapeHtml(m.text || '[Message]')}</div>
+      <div class="search-result-time">${formatSearchResultTime(m.createdAt)}</div>
+    `;
+    item.addEventListener('click', async () => {
+      await jumpToSearchMessage(m.id);
+      messageSearchResultsEl.classList.remove('active');
+    });
+    messageSearchResultsEl.appendChild(item);
+  });
+  messageSearchResultsEl.classList.add('active');
+}
 
 let searchDebounce = null;
 searchInput.addEventListener('input', () => {
   if (searchDebounce) clearTimeout(searchDebounce);
   searchDebounce = setTimeout(async () => {
     const query = searchInput.value.trim();
-    const messageDivs = messagesEl.querySelectorAll('.message');
     if (!query) {
-      messageDivs.forEach((div) => {
-        div.style.background = '';
-        div.style.borderRadius = '';
-      });
+      clearSearchHighlights();
+      if (messageSearchResultsEl) {
+        messageSearchResultsEl.innerHTML = '';
+        messageSearchResultsEl.classList.remove('active');
+      }
       return;
     }
     if (!currentPeer) return;
 
     try {
       const res = await api(`/api/messages/${currentPeer.id}/search?q=${encodeURIComponent(query)}&limit=200`);
+      const messageDivs = messagesEl.querySelectorAll('.message');
       const matchIds = new Set((res.messages || []).map((m) => m.id));
       messageDivs.forEach((div) => {
         if (matchIds.has(div.dataset.messageId)) {
@@ -3971,6 +4185,7 @@ searchInput.addEventListener('input', () => {
           div.style.borderRadius = '';
         }
       });
+      renderMessageSearchResults(res.messages || []);
     } catch (err) {
       console.error('Search failed:', err);
     }

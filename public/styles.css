@@ -64,6 +64,7 @@ body {
   color: var(--text-primary);
   background: #d1d7db;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* ============================================
@@ -185,11 +186,13 @@ input:focus {
    ============================================ */
 .app-screen {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   background: #fff;
 }
 
@@ -285,6 +288,8 @@ input:focus {
 
 .tab-content {
   height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .search-box {
@@ -1426,6 +1431,12 @@ input:focus {
 
 .search-results.active {
   display: block;
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--whatsapp-border);
 }
 
 .search-result-item {
@@ -1464,6 +1475,11 @@ input:focus {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.search-result-time {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 /* Quick Actions Menu */
@@ -1646,6 +1662,42 @@ input:focus {
   z-index: 100;
 }
 
+.install-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 1200;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.install-banner-text {
+  font-size: 0.92rem;
+  line-height: 1.35;
+  margin-bottom: 10px;
+}
+
+.install-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.install-banner .btn {
+  flex: 1;
+  min-height: 42px;
+  padding: 10px 14px;
+  font-size: 0.92rem;
+}
+
+.install-banner .btn-secondary {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
 .call-container {
   display: flex;
   flex-direction: column;
@@ -1810,6 +1862,8 @@ input:focus {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .story-item {
@@ -1820,6 +1874,9 @@ input:focus {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.2s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
 }
 
 .story-item:hover {
@@ -1891,7 +1948,7 @@ input:focus {
   right: 0;
   bottom: 0;
   background: #000;
-  z-index: 1000;
+  z-index: 2200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1908,6 +1965,15 @@ input:focus {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+
+/* Mobile fullscreen for story viewer */
+@media (max-width: 500px) {
+  .story-viewer {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
 }
 
 .story-progress {
@@ -2175,6 +2241,53 @@ input:focus {
    Responsive
    ============================================ */
 @media (max-width: 768px) {
+  html, body {
+    height: 100%;
+  }
+
+  .auth-container {
+    width: calc(100% - 24px);
+    max-width: 420px;
+    padding: 26px 18px;
+    margin: 12px;
+    border-radius: 12px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-size: 16px;
+  }
+
+  .app-screen,
+  .app-container,
+  .sidebar {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .sidebar-header {
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+
+  .sidebar-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .sidebar-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    min-width: 78px;
+    padding: 12px 10px;
+    font-size: 0.9rem;
+    flex: 0 0 auto;
+  }
+
   .sidebar {
     width: 100%;
     min-width: 100%;
@@ -2201,7 +2314,41 @@ input:focus {
   
   .chat-area {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
+  }
+
+  .chat-header {
+    padding-top: calc(8px + env(safe-area-inset-top));
+  }
+
+  .message-input-area {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .message-bubble {
+    max-width: 82%;
+  }
+
+  .call-modal {
+    position: fixed;
+  }
+
+  .call-video {
+    width: min(92vw, 360px);
+    height: min(62vh, 520px);
+  }
+
+  .call-video #localVideo {
+    width: 88px;
+    height: 126px;
+    bottom: 10px;
+    right: 10px;
+  }
+
+  .install-banner {
+    left: 10px;
+    right: 10px;
   }
   
   .messages-container {
