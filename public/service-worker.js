@@ -1,4 +1,4 @@
-const CACHE_NAME = 'social-hub-v1';
+const CACHE_NAME = 'social-hub-v2';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -40,7 +40,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/app/') || url.pathname.startsWith('/web/')) {
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/app/') ||
+    url.pathname.startsWith('/web/') ||
+    url.pathname.startsWith('/socket.io/')
+  ) {
+    return;
+  }
+
+  // Keep app shell fresh to avoid stale JS after deployments.
+  if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/app.js') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 

@@ -1127,6 +1127,11 @@ async function selectPeer(user) {
   }
 }
 
+// Backward-compat shim for older cached UI handlers.
+function selectUser(user) {
+  return selectPeer(user);
+}
+
 async function loadMessages(peerId, opts = {}) {
   const { appendOlder = false } = opts;
   const query = new URLSearchParams({ limit: '40' });
@@ -2655,7 +2660,21 @@ function resendPendingMessage(clientTempId) {
 // Socket Setup
 function setupSocket() {
   if (!token) return;
-  socket = io({ auth: { token } });
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+  }
+  socket = io(window.location.origin, {
+    path: '/socket.io',
+    auth: { token },
+    transports: ['websocket', 'polling'],
+    timeout: 20000,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    withCredentials: true
+  });
 
   socket.on('connect', () => {
     flushPendingQueue();
@@ -3473,7 +3492,7 @@ function renderCallLogs() {
     
     li.addEventListener('click', () => {
       // Start chat with this user
-      selectUser({ id: call.peerId, username: call.peerUsername });
+      selectPeer({ id: call.peerId, username: call.peerUsername, displayName: call.peerUsername });
       switchToTab('chats');
     });
     
