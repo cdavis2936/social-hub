@@ -44,8 +44,6 @@ let storyViewerIndex = 0;
 
 
 let posts = [];
-let exploreResults = { users: [], posts: [] };
-let trendingHashtags = [];
 
 // Helper to get DOM elements
 const el = (id) => document.getElementById(id);
@@ -123,10 +121,6 @@ const unpinMsgBtn = el('unpinMsgBtn');
 
 
 const postsFeed = el('postsFeed');
-const exploreTab = el('exploreTab');
-const exploreSearch = el('exploreSearch');
-const trendingHashtagsEl = el('trendingHashtags');
-const exploreResultsEl = el('exploreResults');
 const quickActions = el('quickActions');
 const chatMenuBtn = el('chatMenuBtn');
 const chatSettingsMenu = el('chatSettingsMenu');
@@ -721,8 +715,6 @@ function switchToTab(tabName) {
       loadCallLogs();
         } else if (tabName === 'posts') {
       loadPosts();
-    } else if (tabName === 'explore') {
-      loadExplore();
     }
   }
 }
@@ -3194,136 +3186,6 @@ function showMobilePrompt(message) {
     // If prompt returns null (cancelled or not supported), resolve with empty string
     resolve('');
   });
-}
-
-// ============================================
-// Explore / Search
-// ============================================
-async function loadExplore() {
-  try {
-    // Load trending hashtags
-    const trendingData = await api('/api/trending/hashtags');
-    trendingHashtags = trendingData.hashtags || [];
-    renderTrendingHashtags();
-    
-    // Load explore feed
-    const exploreData = await api('/api/explore');
-    exploreResults.posts = exploreData.posts || [];
-    renderExploreResults();
-  } catch (err) {
-    console.error('Failed to load explore:', err);
-  }
-}
-
-function renderTrendingHashtags() {
-  if (!trendingHashtagsEl) return;
-  
-  trendingHashtagsEl.innerHTML = '';
-  
-  trendingHashtags.forEach(tag => {
-    const span = document.createElement('span');
-    span.style.cssText = 'background:#f0f0f0;padding:4px 10px;border-radius:12px;font-size:12px;cursor:pointer;';
-    span.textContent = `#${tag.tag} (${tag.count})`;
-    span.onclick = () => searchHashtag(tag.tag);
-    trendingHashtagsEl.appendChild(span);
-  });
-}
-
-function renderExploreResults() {
-  if (!exploreResultsEl) return;
-  
-  exploreResultsEl.innerHTML = '';
-  
-  if (exploreResults.posts.length === 0) {
-    exploreResultsEl.innerHTML = '<div class="list-empty">No posts to explore</div>';
-    return;
-  }
-  
-  // Show as grid
-  const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:4px;';
-  
-  exploreResults.posts.forEach(post => {
-    const item = document.createElement('div');
-    item.style.cssText = 'aspect-ratio:1;overflow:hidden;cursor:pointer;position:relative;';
-
-    const mediaItems = Array.isArray(post.media) ? post.media : [];
-    const firstMedia = mediaItems[0] || null;
-    let previewEl;
-
-    if (firstMedia?.type === 'video') {
-      const video = document.createElement('video');
-      video.src = resolveMediaSrc(firstMedia.url);
-      video.muted = true;
-      video.autoplay = true;
-      video.loop = true;
-      video.playsInline = true;
-      video.preload = 'metadata';
-      video.crossOrigin = 'anonymous';
-      video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-      // Best-effort autoplay in browsers with strict policies.
-      video.play().catch(() => {});
-      item.onmouseenter = () => {
-        overlay.style.opacity = '1';
-        video.play().catch(() => {});
-      };
-      item.onmouseleave = () => {
-        overlay.style.opacity = '0';
-        video.pause();
-      };
-      previewEl = video;
-    } else {
-      const img = document.createElement('img');
-      img.src = firstMedia?.url || '';
-      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-      item.onmouseenter = () => overlay.style.opacity = '1';
-      item.onmouseleave = () => overlay.style.opacity = '0';
-      previewEl = img;
-    }
-    
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);color:#fff;padding:4px;display:flex;justify-content:space-around;font-size:12px;opacity:0;transition:opacity 0.2s;';
-    overlay.innerHTML = '<span>❤️ ' + (post.likesCount || 0) + '</span><span>💬 ' + (post.commentsCount || 0) + '</span>';
-    
-    item.appendChild(previewEl);
-    item.appendChild(overlay);
-    grid.appendChild(item);
-  });
-  
-  exploreResultsEl.appendChild(grid);
-}
-
-async function searchHashtag(tag) {
-  try {
-    const data = await api(`/api/hashtag/${tag}`);
-    exploreResults.posts = data.posts || [];
-    renderExploreResults();
-  } catch (err) {
-    console.error('Failed to search hashtag:', err);
-  }
-}
-
-// Search handler
-if (exploreSearch) {
-  let searchTimeout;
-  exploreSearch.oninput = () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(async () => {
-      const query = exploreSearch.value.trim();
-      if (query.length < 2) {
-        loadExplore();
-        return;
-      }
-      
-      try {
-        const data = await api(`/api/search?q=${encodeURIComponent(query)}&type=all`);
-        exploreResults = { users: data.users || [], posts: data.posts || [] };
-        renderExploreResults();
-      } catch (err) {
-        console.error('Search failed:', err);
-      }
-    }, 500);
-  };
 }
 
 // WebRTC

@@ -85,7 +85,6 @@
             <button class="tab" data-tab="users">Users</button>
             <button class="tab" data-tab="groups">Groups</button>
             <button class="tab" data-tab="posts">Posts</button>
-            <button class="tab" data-tab="explore">Explore</button>
             <button class="tab" data-tab="stories">Stories</button>
             <button class="tab" data-tab="calls">Calls</button>
           </div>
@@ -119,17 +118,6 @@
                 <button id="createPostBtn" class="btn btn-secondary" type="button" style="flex:1;">+ New Post</button>
               </div>
               <div id="postsFeed" class="posts-feed"></div>
-            </div>
-            <!-- Explore Tab -->
-            <div id="exploreTab" class="tab-content hidden">
-              <div class="search-box">
-                <input type="text" id="exploreSearch" placeholder="Search users, hashtags, locations..." />
-              </div>
-              <div class="trending-section" id="trendingSection" style="padding:12px;border-bottom:1px solid var(--whatsapp-border);">
-                <div class="section-label" style="font-weight:600;margin-bottom:8px;">Trending</div>
-                <div id="trendingHashtags" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
-              </div>
-              <div id="exploreResults" class="explore-grid"></div>
             </div>
             <!-- Stories Tab -->
             <div id="storiesTab" class="tab-content hidden">
