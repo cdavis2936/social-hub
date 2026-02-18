@@ -10,6 +10,19 @@ let peerConnection = null;
 let localStream = null;
 let currentCallPeer = null;
 let rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+// Fetch ICE configuration from server (includes TURN servers)
+async function fetchIceConfig() {
+  try {
+    const data = await api('/api/config/rtc');
+    if (data.iceServers && data.iceServers.length > 0) {
+      rtcConfig = { iceServers: data.iceServers };
+      console.log('ICE config loaded:', rtcConfig);
+    }
+  } catch (err) {
+    console.warn('Failed to fetch ICE config, using defaults:', err.message);
+  }
+}
 let chats = [];
 let activeTab = 'chats';
 let typingTimeout = null;
@@ -1259,7 +1272,7 @@ function addMessage(message, update = false) {
   if (message.mediaType && message.mediaUrl) {
     if (message.mediaType === 'image') {
       const img = document.createElement('img');
-      img.src = message.mediaUrl;
+      img.src = resolveMediaSrc(message.mediaUrl);
       img.alt = 'Image';
       bubble.appendChild(img);
     } else if (message.mediaType === 'video') {
@@ -2031,32 +2044,36 @@ function normalizeStory(story) {
 function resolveMediaSrc(mediaUrl) {
   if (!mediaUrl) return '';
   
+  // Trim and convert to string to handle any whitespace issues
+  const url = String(mediaUrl).trim();
+  if (!url) return '';
+  
   // Handle already complete URLs
   if (
-    mediaUrl.startsWith('http://') ||
-    mediaUrl.startsWith('https://') ||
-    mediaUrl.startsWith('data:') ||
-    mediaUrl.startsWith('blob:')
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('data:') ||
+    url.startsWith('blob:')
   ) {
     // Add Cloudinary video optimization parameters
-    if (mediaUrl.includes('cloudinary.com') && mediaUrl.includes('/video/')) {
+    if (url.includes('cloudinary.com') && url.includes('/video/')) {
       // Check if it's already a transformed URL
-      if (!mediaUrl.includes('/video/upload/')) {
-        return mediaUrl; // Not a standard Cloudinary video URL
+      if (!url.includes('/video/upload/')) {
+        return url; // Not a standard Cloudinary video URL
       }
       
       // Insert transformation after /video/upload/ and before /v{version}/
       // Format: .../video/upload/{transformation}/v{version}/...
-      const transformed = mediaUrl.replace(
+      const transformed = url.replace(
         /(\/video\/upload\/)(\d+)/,
         '$1q_auto:good,f_mp4,w_1280,h_720/$2'
       );
       return transformed;
     }
-    return mediaUrl;
+    return url;
   }
-  if (mediaUrl.startsWith('/')) return `${window.location.origin}${mediaUrl}`;
-  return `${window.location.origin}/${mediaUrl}`;
+  if (url.startsWith('/')) return `${window.location.origin}${url}`;
+  return `${window.location.origin}/${url}`;
 }
 
 function inferStoryMediaKind(mediaType, mediaUrl) {
@@ -3801,6 +3818,7 @@ authForm.addEventListener('submit', async (e) => {
 
     saveSession(data.token, data.user);
     await loadMeProfile();
+    await fetchIceConfig(); // Fetch TURN servers from server
     renderAuth();
     showApp();
     setupSocket();

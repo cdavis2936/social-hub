@@ -31,6 +31,9 @@ const Save = require('./models/Save');
 const Ad = require('./models/Ad');
 
 const app = express();
+
+// Trust proxy for Render/Heroku behind reverse proxy
+app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || 'default_dev_secret_key';
 if (!JWT_SECRET) {
@@ -219,6 +222,20 @@ app.use((req, _res, next) => {
   req.on('aborted', () => {
     req.wasAborted = true;
   });
+  next();
+});
+
+// API aliases: allow mobile/web clients to use /app/* or /web/*.
+app.use((req, _res, next) => {
+  const rewriteToApi = (prefix) => {
+    if (req.url === prefix || req.url.startsWith(`${prefix}/`) || req.url.startsWith(`${prefix}?`)) {
+      req.url = `/api${req.url.slice(prefix.length)}`;
+      return true;
+    }
+    return false;
+  };
+
+  rewriteToApi('/app') || rewriteToApi('/web');
   next();
 });
 
@@ -2146,39 +2163,8 @@ app.post('/api/posts/:postId/comments', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// Explore / Search / Trending API
+// Search / Trending API
 // ============================================
-
-// Explore feed (algorithmic content discovery)
-app.get('/api/explore', authMiddleware, async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
-  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 60);
-  const safePage = Math.max(Number(page) || 1, 1);
-  const skip = (safePage - 1) * safeLimit;
-
-  const pipeline = buildPostTrendPipeline({
-    userId: req.user.id,
-    excludeOwn: true,
-    skip,
-    limit: safeLimit
-  });
-  let rankedPosts = await Post.aggregate(pipeline);
-
-  // Fallback: in low-activity environments (single user/dev), include own posts.
-  if (!rankedPosts.length) {
-    const fallbackPipeline = buildPostTrendPipeline({
-      userId: req.user.id,
-      excludeOwn: false,
-      skip,
-      limit: safeLimit
-    });
-    rankedPosts = await Post.aggregate(fallbackPipeline);
-  }
-
-  const postsWithFlags = await attachPostFlags(rankedPosts, req.user.id);
-  
-  res.json({ posts: postsWithFlags, page: safePage, limit: safeLimit });
-});
 
 // Search
 app.get('/api/search', authMiddleware, async (req, res) => {
@@ -2810,11 +2796,17 @@ async function startServer() {
   }
   
   // Initialize queue (optional - don't crash if Redis unavailable)
-  try {
-    await initQueueIfAvailable();
-  } catch (err) {
-    console.warn('Queue initialization failed:', err.message);
-  }
+async function initQueueIfAvailable() {
+  // Queue is optional - if Redis is not available, the app will work without it
+  // This is a placeholder for future queue implementation
+  console.log('Queue system ready (optional)');
+}
+
+try {
+  await initQueueIfAvailable();
+} catch (err) {
+  console.warn('Queue initialization failed:', err.message);
+}
 }
 
 async function shutdown() {
