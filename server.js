@@ -34,6 +34,32 @@ const app = express();
 
 // Trust proxy for Render/Heroku behind reverse proxy
 app.set('trust proxy', 1);
+
+const wrapAsyncHandler = (handler) => {
+  if (typeof handler !== 'function' || handler.length === 4) return handler;
+
+  return function wrappedHandler(req, res, next) {
+    try {
+      const maybePromise = handler(req, res, next);
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.catch(next);
+      }
+    } catch (err) {
+      next(err);
+    }
+  };
+};
+
+const wrapRouteArg = (arg) => {
+  if (Array.isArray(arg)) return arg.map(wrapRouteArg);
+  return wrapAsyncHandler(arg);
+};
+
+['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'all', 'use'].forEach((method) => {
+  const original = app[method].bind(app);
+  app[method] = (...args) => original(...args.map(wrapRouteArg));
+});
+
 const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || 'default_dev_secret_key';
 if (!JWT_SECRET) {
@@ -329,21 +355,6 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
   const token = jwt.sign({ id: user._id.toString(), username: user.username }, JWT_SECRET, { expiresIn: '7d' });
   return res.status(201).json({ token, user: sanitizeUser(user) });
-});
-
-app.post('/api/auth/login', authLimiter, async (req, res) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'username and password are required' });
-
-  const normalized = String(username).trim().toLowerCase();
-  const user = await User.findOne({ username: normalized });
-  if (!user) return res.status(401).json({ error: 'invalid credentials' });
-
-  const ok = await user.comparePassword(password);
-  if (!ok) return res.status(401).json({ error: 'invalid credentials' });
-
-  const token = jwt.sign({ id: user._id.toString(), username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-  return res.json({ token, user: sanitizeUser(user) });
 });
 
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -2817,5 +2828,11 @@ async function shutdown() {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled promise rejection:', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
 
 startServer();

@@ -1,9 +1,18 @@
-const cloudinary = require('cloudinary').v2;
+let cloudinary = null;
+try {
+  cloudinary = require('cloudinary').v2;
+} catch (_err) {
+  console.warn('Cloudinary SDK not installed. Cloudinary uploads are disabled.');
+}
 const path = require('path');
 const fs = require('fs');
 
 // Configure Cloudinary
 const initializeCloudinary = () => {
+  if (!cloudinary) {
+    return false;
+  }
+
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -24,7 +33,7 @@ const initializeCloudinary = () => {
 };
 
 const isCloudinaryReady = () => {
-  return !!process.env.CLOUDINARY_CLOUD_NAME;
+  return !!(cloudinary && process.env.CLOUDINARY_CLOUD_NAME);
 };
 
 // Get upload options based on file type
@@ -64,6 +73,10 @@ const getUploadOptions = (file) => {
  * Supports both memory buffer and disk file paths.
  */
 const uploadToCloudinary = async (fileOrPath, folder = 'uploads') => {
+  if (!cloudinary) {
+    throw new Error('Cloudinary SDK is not installed');
+  }
+
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   if (!cloudName) {
     throw new Error('Cloudinary not configured');

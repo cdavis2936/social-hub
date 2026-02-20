@@ -4,9 +4,9 @@
 
 :root {
   /* WhatsApp Colors */
-  --whatsapp-green: #00a884;
-  --whatsapp-green-dark: #008069;
-  --whatsapp-green-light: #25d366;
+  --whatsapp-green: #a81900ff;
+  --whatsapp-green-dark: #273d39ff;
+  --whatsapp-green-light: #d3c725ff;
   --whatsapp-bg: #efeae2;
   --whatsapp-bg-dark: #0c1710;
   --whatsapp-bg-chat: #efeae2;
@@ -1823,6 +1823,7 @@ input:focus {
 /* Stories Sections */
 .stories-section {
   padding: 12px;
+  min-height: 80px;
 }
 
 .stories-section.hidden {
@@ -1864,6 +1865,7 @@ input:focus {
   gap: 12px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  min-height: 100px;
 }
 
 .story-item {

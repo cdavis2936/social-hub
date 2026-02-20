@@ -204,6 +204,64 @@ let userSearchTerm = '';
 
 
 const notificationSettings = JSON.parse(localStorage.getItem('notificationSettings') || '{"enabled":false,"sound":true,"vibrate":false}');
+let audioCtx = null;
+let ringtoneInterval = null;
+let lastMessageToneAt = 0;
+
+function getAudioCtx() {
+  if (audioCtx) return audioCtx;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  audioCtx = new Ctx();
+  return audioCtx;
+}
+
+function playTone(frequency = 880, duration = 0.08, gainValue = 0.03, type = 'sine') {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = frequency;
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(gainValue, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.02);
+}
+
+function playMessageTone() {
+  if (!notificationSettings.sound) return;
+  const now = Date.now();
+  if (now - lastMessageToneAt < 250) return;
+  lastMessageToneAt = now;
+  playTone(900, 0.09, 0.03, 'triangle');
+}
+
+function playRingtoneBurst() {
+  playTone(740, 0.18, 0.028, 'sine');
+  setTimeout(() => playTone(988, 0.22, 0.03, 'sine'), 200);
+}
+
+function startIncomingRingtone() {
+  if (!notificationSettings.sound) return;
+  stopIncomingRingtone();
+  playRingtoneBurst();
+  ringtoneInterval = setInterval(playRingtoneBurst, 1600);
+}
+
+function stopIncomingRingtone() {
+  if (ringtoneInterval) {
+    clearInterval(ringtoneInterval);
+    ringtoneInterval = null;
+  }
+}
 
 // Encryption utilities using Web Crypto API
 const Encryption = {
@@ -735,28 +793,14 @@ function sortedUsersForChatList() {
 
 async function notifyIncomingMessage(message) {
   if (!message || message.fromUserId === me?.id) return;
-  if (!notificationSettings.enabled || mutedUsers.has(message.fromUserId)) return;
+  if (mutedUsers.has(message.fromUserId)) return;
 
-  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+  if (notificationSettings.enabled && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
     const from = users.find((u) => u.id === message.fromUserId)?.username || message.fromUsername || 'User';
     new Notification(`@${from}`, { body: messagePreview(message), silent: !notificationSettings.sound });
   }
 
-  if (notificationSettings.sound) {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 880;
-      gain.gain.value = 0.03;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.08);
-      setTimeout(() => ctx.close(), 120);
-    } catch (_) {}
-  }
+  playMessageTone();
 
   if (notificationSettings.vibrate && navigator.vibrate) {
     navigator.vibrate(120);
@@ -3025,6 +3069,10 @@ function setupSocket() {
     callUsername.textContent = `@${fromUsername}`;
     callAvatar.textContent = fromUsername.charAt(0).toUpperCase();
     callStatus.textContent = `Incoming ${currentCallType} call...`;
+    startIncomingRingtone();
+    if (notificationSettings.vibrate && navigator.vibrate) {
+      navigator.vibrate([250, 120, 250, 120, 250]);
+    }
     incomingCallActions?.classList.remove('hidden');
     callModal.classList.remove('hidden');
   });
@@ -3059,6 +3107,7 @@ function setupSocket() {
   });
 
   socket.on('call_end', () => {
+    stopIncomingRingtone();
     const duration = callStartTime > 0 ? Math.round((Date.now() - callStartTime) / 1000) : 0;
     const status = callStartTime > 0 ? 'answered' : 'missed';
     endCall(true, status, duration);
@@ -3472,6 +3521,7 @@ async function startCall(peerId, withVideo, offer) {
 }
 
 function endCall(fromRemote = false, status = 'missed', duration = 0) {
+  stopIncomingRingtone();
   if (peerConnection) {
     peerConnection.close();
     peerConnection = null;
@@ -3852,6 +3902,9 @@ notifToggle?.addEventListener('change', async () => {
 
 soundToggle?.addEventListener('change', () => {
   notificationSettings.sound = Boolean(soundToggle.checked);
+  if (!notificationSettings.sound) {
+    stopIncomingRingtone();
+  }
   persistNotificationSettings();
 });
 
@@ -4006,6 +4059,7 @@ let pendingIncomingCall = null;
 
 async function startOutgoingCall(withVideo) {
   if (!currentPeer) return;
+  stopIncomingRingtone();
   pendingIncomingCall = null;
   incomingCallActions?.classList.add('hidden');
   currentCallPeer = { id: currentPeer.id, username: currentPeer.username };
@@ -4037,6 +4091,7 @@ videoCallBtn.addEventListener('click', () => {
 
 acceptCallBtn?.addEventListener('click', async () => {
   if (!pendingIncomingCall) return;
+  stopIncomingRingtone();
   incomingCallActions?.classList.add('hidden');
   callStatus.textContent = 'Connecting...';
   try {
@@ -4058,6 +4113,7 @@ acceptCallBtn?.addEventListener('click', async () => {
 });
 
 rejectCallBtn?.addEventListener('click', () => {
+  stopIncomingRingtone();
   if (socket && currentCallPeer) {
     socket.emit('call_end', { toUserId: currentCallPeer.id });
   }
@@ -4073,6 +4129,7 @@ backToChatsBtn?.addEventListener('click', () => {
 });
 
 endCallBtn.addEventListener('click', () => {
+  stopIncomingRingtone();
   const duration = callStartTime > 0 ? Math.round((Date.now() - callStartTime) / 1000) : 0;
   const status = callStartTime > 0 ? 'answered' : (pendingIncomingCall ? 'declined' : 'missed');
   endCall(false, status, duration);
