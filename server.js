@@ -1733,9 +1733,21 @@ app.get('/api/calls', authMiddleware, async (req, res) => {
 
 app.post('/api/calls/log', authMiddleware, async (req, res) => {
   const { peerId, peerUsername, type, status, duration } = req.body;
+  const normalizedType = String(type || '').trim().toLowerCase() === 'voice'
+    ? 'audio'
+    : String(type || '').trim().toLowerCase();
+  const normalizedStatus = String(status || '').trim().toLowerCase();
   
-  if (!peerId || !type || !status) {
+  if (!peerId || !normalizedType || !normalizedStatus) {
     return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  if (!['audio', 'video'].includes(normalizedType)) {
+    return res.status(400).json({ error: 'Invalid call type' });
+  }
+
+  if (!['missed', 'answered', 'declined'].includes(normalizedStatus)) {
+    return res.status(400).json({ error: 'Invalid call status' });
   }
   
   const callLog = new CallLog({
@@ -1743,10 +1755,10 @@ app.post('/api/calls/log', authMiddleware, async (req, res) => {
     callerUsername: req.user.username,
     calleeId: peerId,
     calleeUsername: peerUsername,
-    type,
-    status,
+    type: normalizedType,
+    status: normalizedStatus,
     duration: duration || 0,
-    endedAt: status !== 'missed' ? new Date() : undefined
+    endedAt: normalizedStatus !== 'missed' ? new Date() : undefined
   });
   
   await callLog.save();
