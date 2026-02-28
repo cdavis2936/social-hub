@@ -207,6 +207,11 @@ const notificationSettings = JSON.parse(localStorage.getItem('notificationSettin
 let audioCtx = null;
 let ringtoneInterval = null;
 let lastMessageToneAt = 0;
+let lastQueueNoticeAt = 0;
+
+function isNetworkOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
 
 function getAudioCtx() {
   if (audioCtx) return audioCtx;
@@ -573,6 +578,61 @@ function showInstallBanner(text, buttonLabel = 'Install') {
   installBanner.classList.remove('hidden');
 }
 
+function showInAppBanner(text, kind = 'info', onClick = null) {
+  const existing = document.getElementById('inAppBanner');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('button');
+  banner.id = 'inAppBanner';
+  banner.type = 'button';
+  banner.textContent = text;
+  banner.style.cssText = [
+    'position: fixed',
+    'top: calc(10px + env(safe-area-inset-top))',
+    'left: 50%',
+    'transform: translateX(-50%)',
+    'z-index: 2600',
+    'border: none',
+    'border-radius: 999px',
+    'padding: 10px 14px',
+    'max-width: min(92vw, 520px)',
+    'width: max-content',
+    'font-size: 14px',
+    'font-weight: 600',
+    'box-shadow: 0 8px 24px rgba(0,0,0,0.25)',
+    'cursor: pointer',
+    'color: #fff',
+    kind === 'call' ? 'background: #c0392b' : 'background: #128c7e'
+  ].join(';');
+
+  banner.addEventListener('click', () => {
+    if (typeof onClick === 'function') onClick();
+    banner.remove();
+  });
+
+  document.body.appendChild(banner);
+
+  setTimeout(() => {
+    banner.remove();
+  }, kind === 'call' ? 7000 : 3500);
+}
+
+function showQueuedMessageNotice() {
+  const now = Date.now();
+  if (now - lastQueueNoticeAt < 3000) return;
+  lastQueueNoticeAt = now;
+  showInAppBanner('You are offline. Message queued and will send when online.');
+}
+
+function reconnectSocketIfNeeded() {
+  if (!token || isNetworkOffline()) return;
+  if (!socket) {
+    setupSocket();
+    return;
+  }
+  if (socket.disconnected) socket.connect();
+}
+
 function setupInstallPrompt() {
   if (!installBanner || !installAppBtn || !dismissInstallBtn) return;
 
@@ -794,10 +854,15 @@ function sortedUsersForChatList() {
 async function notifyIncomingMessage(message) {
   if (!message || message.fromUserId === me?.id) return;
   if (mutedUsers.has(message.fromUserId)) return;
+  const from = users.find((u) => u.id === message.fromUserId)?.username || message.fromUsername || 'User';
 
   if (notificationSettings.enabled && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    const from = users.find((u) => u.id === message.fromUserId)?.username || message.fromUsername || 'User';
     new Notification(`@${from}`, { body: messagePreview(message), silent: !notificationSettings.sound });
+  }
+
+  const isCurrentChat = currentPeer?.id === message.fromUserId && !document.hidden;
+  if (!isCurrentChat) {
+    showInAppBanner(`New message from @${from}`);
   }
 
   playMessageTone();
@@ -2799,10 +2864,15 @@ function emitOrQueueMessage(payload, clientTempId) {
       markPendingFailed(clientTempId);
     }, 8000);
     pendingMessageTimers.set(clientTempId, timer);
+    return;
   }
+
+  showQueuedMessageNotice();
+  reconnectSocketIfNeeded();
 }
 
 function flushPendingQueue() {
+  if (isNetworkOffline()) return;
   if (!socket || !socket.connected) return;
   pendingMessageQueue.forEach((item) => {
     if (item.state === 'sent') return;
@@ -2892,6 +2962,9 @@ function setupSocket() {
     if (currentPeer) {
       chatStatus.textContent = 'Disconnected';
       chatStatus.style.color = '#f15c6d';
+    }
+    if (isNetworkOffline()) {
+      showInAppBanner('Offline mode: messages will be queued.');
     }
   });
 
@@ -3066,9 +3139,13 @@ function setupSocket() {
     currentCallType = callType === 'video' ? 'video' : 'voice';
     callStartTime = 0; // Will be set when call is accepted
     pendingIncomingCall = { fromUserId, fromUsername, offer, callType: currentCallType };
+    appSection.classList.add('active-chat');
+    noChatSelected?.classList.add('hidden');
+    activeChat?.classList.remove('hidden');
     callUsername.textContent = `@${fromUsername}`;
     callAvatar.textContent = fromUsername.charAt(0).toUpperCase();
     callStatus.textContent = `Incoming ${currentCallType} call...`;
+    showInAppBanner(`Incoming ${currentCallType} call from @${fromUsername}`, 'call');
     startIncomingRingtone();
     if (notificationSettings.vibrate && navigator.vibrate) {
       navigator.vibrate([250, 120, 250, 120, 250]);
@@ -3949,14 +4026,39 @@ blockUserBtn?.addEventListener('click', async () => {
   await loadChats();
 });
 
+let authIntent = 'login';
+
+authForm.querySelectorAll('button[data-action]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    authIntent = btn.dataset.action || 'login';
+  });
+});
+
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const action = e.submitter?.dataset?.action;
+  const activeAction = document.activeElement?.dataset?.action;
+  const action = e.submitter?.dataset?.action || activeAction || authIntent || 'login';
   const username = el('username').value.trim();
   const password = el('password').value;
 
   try {
     authStatus.textContent = '';
+    const finishSignIn = async (authData) => {
+      if (!authData?.token || !authData?.user) {
+        throw new Error('Invalid auth response from server');
+      }
+      saveSession(authData.token, authData.user);
+      await loadMeProfile();
+      await fetchIceConfig(); // Fetch TURN servers from server
+      renderAuth();
+      showApp();
+      setupSocket();
+      await refreshUsers();
+      await loadChats();
+      await loadGroups();
+      await loadStories();
+    };
+
     const endpoint = action === 'register' ? '/api/auth/register' : '/api/auth/login';
     const data = await api(endpoint, {
       method: 'POST',
@@ -3964,18 +4066,29 @@ authForm.addEventListener('submit', async (e) => {
       body: JSON.stringify({ username, password })
     });
 
-    saveSession(data.token, data.user);
-    await loadMeProfile();
-    await fetchIceConfig(); // Fetch TURN servers from server
-    renderAuth();
-    showApp();
-    setupSocket();
-    await refreshUsers();
-    await loadChats();
-    await loadGroups();
-    await loadStories();
+    if (data?.requires2FA) {
+      const code = window.prompt('Enter your 2FA code');
+      if (!code || !code.trim()) {
+        authStatus.textContent = '2FA code is required to continue';
+        return;
+      }
+      const verified = await api('/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken: data.tempToken, code: code.trim() })
+      });
+      await finishSignIn(verified);
+      return;
+    }
+
+    await finishSignIn(data);
   } catch (err) {
-    authStatus.textContent = err.message;
+    const msg = err.message || 'Authentication failed';
+    if (msg.toLowerCase().includes('invalid credentials')) {
+      authStatus.textContent = 'Invalid username/password. If you are new, click Create Account.';
+      return;
+    }
+    authStatus.textContent = msg;
   }
 });
 
@@ -4008,10 +4121,8 @@ messageForm.addEventListener('submit', (e) => {
     return;
   }
   if (!socket) {
-    alert('Socket not initialized. Please refresh and log in again.');
-    return;
-  }
-  if (socket.disconnected) {
+    reconnectSocketIfNeeded();
+  } else if (socket.disconnected && !isNetworkOffline()) {
     socket.connect();
     authStatus.textContent = 'Reconnecting... message queued';
   }
@@ -4051,6 +4162,22 @@ messageForm.addEventListener('submit', (e) => {
 
   messageInput.value = '';
   hideReplyBar();
+});
+
+window.addEventListener('offline', () => {
+  showInAppBanner('You are offline. You can keep chatting; messages will queue.');
+});
+
+window.addEventListener('online', async () => {
+  showInAppBanner('Back online. Sending queued messages...');
+  reconnectSocketIfNeeded();
+  setTimeout(() => {
+    flushPendingQueue();
+  }, 400);
+  try {
+    await refreshUsers();
+    await loadChats();
+  } catch (_err) {}
 });
 
 let callStartTime = 0;

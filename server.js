@@ -741,7 +741,8 @@ async function createSession(user, req, loginMethod) {
 
   const session = await Session.create({
     userId: user._id,
-    token: '', // Will be updated after token creation
+    // Placeholder to satisfy required validation before JWT is created.
+    token: `pending:${crypto.randomBytes(12).toString('hex')}`,
     device,
     browser,
     os,
