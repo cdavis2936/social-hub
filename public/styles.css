@@ -1983,21 +1983,19 @@ input:focus {
   top: 8px;
   left: 8px;
   right: 8px;
-  display: flex;
-  gap: 4px;
-  z-index: 10;
-}
-
-.progress-bar {
-  flex: 1;
   height: 3px;
   background: rgba(255, 255, 255, 0.3);
   border-radius: 3px;
   overflow: hidden;
+  z-index: 10;
 }
 
-.progress-bar.active {
+.progress-bar {
+  width: 0;
+  height: 3px;
   background: #fff;
+  border-radius: 3px;
+  transition: width 0.05s linear;
 }
 
 .story-header {
@@ -2054,6 +2052,7 @@ input:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
 }
 
 .story-content > div {
@@ -2386,5 +2385,15 @@ input:focus {
   
   .story-content > div {
     height: 100%;
+  }
+
+  .story-content img,
+  .story-content video {
+    object-fit: cover;
+  }
+
+  #storyPrevBtn,
+  #storyNextBtn {
+    display: none !important;
   }
 }

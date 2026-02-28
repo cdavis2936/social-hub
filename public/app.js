@@ -152,6 +152,7 @@ const soundToggle = el('soundToggle');
 const vibrateToggle = el('vibrateToggle');
 const storyPrevBtn = el('storyPrevBtn');
 const storyNextBtn = el('storyNextBtn');
+const storyContent = storyModal?.querySelector('.story-content');
 const myStoriesSection = el('myStoriesSection');
 const myStoriesList = el('myStoriesList');
 const storyReactions = el('storyReactions');
@@ -165,6 +166,7 @@ const storyViewersBtn = el('storyViewersBtn');
 const storyViewCount = el('storyViewCount');
 const highlightsSection = el('highlightsSection');
 const highlightsList = el('highlightsList');
+const storyProgress = el('storyProgress');
 const installBanner = el('installBanner');
 const installBannerText = el('installBannerText');
 const installAppBtn = el('installAppBtn');
@@ -183,6 +185,9 @@ let storyVideoRetryTimer = null;
 let activeStoryMediaKey = '';
 let storyVideoSourceCandidates = [];
 let storyVideoSourceIndex = 0;
+const STORY_IMAGE_DURATION_MS = 5000;
+let storyAdvanceTimer = null;
+let storyProgressTicker = null;
 let peerKeys = {};
 let chatSummaries = new Map();
 let blockedUsers = new Set(JSON.parse(localStorage.getItem('blockedUsers') || '[]'));
@@ -192,7 +197,7 @@ let pinnedChats = new Set(JSON.parse(localStorage.getItem('pinnedChats') || '[]'
 
 forceInlinePlayback(localVideo, { showControls: false });
 forceInlinePlayback(remoteVideo, { showControls: false });
-forceInlinePlayback(storyVideo, { showControls: true });
+forceInlinePlayback(storyVideo, { showControls: false });
 let pendingMessageQueue = JSON.parse(localStorage.getItem('pendingMessageQueue') || '[]');
 let pendingMessageTimers = new Map();
 let currentMessagesCursor = null;
@@ -2323,6 +2328,45 @@ function inferStoryMediaKind(mediaType, mediaUrl) {
   return { kind: 'unknown', urlExt };
 }
 
+function setStoryProgress(percent) {
+  if (!storyProgress) return;
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  storyProgress.style.width = `${safePercent}%`;
+}
+
+function clearStoryPlaybackTimers() {
+  if (storyAdvanceTimer) {
+    clearTimeout(storyAdvanceTimer);
+    storyAdvanceTimer = null;
+  }
+  if (storyProgressTicker) {
+    clearInterval(storyProgressTicker);
+    storyProgressTicker = null;
+  }
+}
+
+function goToNextStoryOrClose() {
+  if (storyViewerIndex < storyViewerList.length - 1) {
+    renderStoryAt(storyViewerIndex + 1);
+  } else {
+    closeStory();
+  }
+}
+
+function startImageStoryPlayback() {
+  clearStoryPlaybackTimers();
+  setStoryProgress(0);
+  const startedAt = Date.now();
+  storyProgressTicker = setInterval(() => {
+    const elapsed = Date.now() - startedAt;
+    setStoryProgress((elapsed / STORY_IMAGE_DURATION_MS) * 100);
+  }, 50);
+  storyAdvanceTimer = setTimeout(() => {
+    clearStoryPlaybackTimers();
+    goToNextStoryOrClose();
+  }, STORY_IMAGE_DURATION_MS);
+}
+
 function renderStoryAt(index) {
   const story = normalizeStory(storyViewerList[index]);
   if (!story) return;
@@ -2384,6 +2428,8 @@ function renderStoryAt(index) {
   }
   
   const { kind: mediaKind, urlExt } = inferStoryMediaKind(story.mediaType, story.mediaUrl);
+  clearStoryPlaybackTimers();
+  setStoryProgress(0);
   
   if (!mediaSrc) {
     storyVideo.pause();
@@ -2411,12 +2457,12 @@ function renderStoryAt(index) {
     if (mediaChanged || storyVideo.src !== nextSrc) {
       storyVideo.src = nextSrc;
       storyVideo.preload = 'metadata';
-      forceInlinePlayback(storyVideo, { showControls: true });
+      forceInlinePlayback(storyVideo, { showControls: false });
       storyVideo.muted = true;
       storyVideo.load();
     }
     storyVideo.play().catch(() => {
-      // Safari/iOS may block autoplay; keep controls visible for manual play.
+      // iOS may block autoplay; user can tap center to play.
     });
   } else {
     // Treat as image
@@ -2428,6 +2474,7 @@ function renderStoryAt(index) {
     if (mediaChanged || storyImage.src !== mediaSrc) {
       storyImage.src = mediaSrc;
     }
+    startImageStoryPlayback();
   }
   
   if (storyPrevBtn) storyPrevBtn.style.display = storyViewerIndex > 0 ? 'inline-flex' : 'none';
@@ -2565,6 +2612,17 @@ storyVideo?.addEventListener('loadeddata', () => {
   if (errorOverlay) errorOverlay.style.display = 'none';
 });
 
+storyVideo?.addEventListener('timeupdate', () => {
+  if (!currentStory || storyVideo.style.display !== 'block') return;
+  if (!Number.isFinite(storyVideo.duration) || storyVideo.duration <= 0) return;
+  setStoryProgress((storyVideo.currentTime / storyVideo.duration) * 100);
+});
+
+storyVideo?.addEventListener('ended', () => {
+  if (!currentStory || storyVideo.style.display !== 'block') return;
+  goToNextStoryOrClose();
+});
+
 function showStoryMediaError(message) {
   // Create or update error overlay
   let errorOverlay = document.getElementById('story-error-overlay');
@@ -2601,6 +2659,7 @@ function showStoryMediaError(message) {
 }
 
 function closeStory() {
+  clearStoryPlaybackTimers();
   storyModal.classList.add('hidden');
   storyVideo.pause();
   storyVideo.src = '';
@@ -2632,6 +2691,25 @@ storyPrevBtn?.addEventListener('click', (e) => {
 storyNextBtn?.addEventListener('click', (e) => {
   e.stopPropagation();
   if (storyViewerIndex < storyViewerList.length - 1) renderStoryAt(storyViewerIndex + 1);
+});
+
+storyContent?.addEventListener('click', (e) => {
+  if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) return;
+  const rect = storyContent.getBoundingClientRect();
+  if (!rect.width) return;
+  const ratio = (e.clientX - rect.left) / rect.width;
+  if (ratio < 0.35) {
+    if (storyViewerIndex > 0) renderStoryAt(storyViewerIndex - 1);
+    return;
+  }
+  if (ratio > 0.65) {
+    goToNextStoryOrClose();
+    return;
+  }
+  if (storyVideo.style.display === 'block') {
+    if (storyVideo.paused) storyVideo.play().catch(() => {});
+    else storyVideo.pause();
+  }
 });
 
 // Touch swipe support for story navigation
@@ -4027,6 +4105,7 @@ blockUserBtn?.addEventListener('click', async () => {
 });
 
 let authIntent = 'login';
+let isAuthSubmitting = false;
 
 authForm.querySelectorAll('button[data-action]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -4036,6 +4115,12 @@ authForm.querySelectorAll('button[data-action]').forEach((btn) => {
 
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (isAuthSubmitting) return;
+  isAuthSubmitting = true;
+  const authButtons = authForm.querySelectorAll('button[type="submit"]');
+  authButtons.forEach((btn) => {
+    btn.disabled = true;
+  });
   const activeAction = document.activeElement?.dataset?.action;
   const action = e.submitter?.dataset?.action || activeAction || authIntent || 'login';
   const username = el('username').value.trim();
@@ -4089,6 +4174,11 @@ authForm.addEventListener('submit', async (e) => {
       return;
     }
     authStatus.textContent = msg;
+  } finally {
+    isAuthSubmitting = false;
+    authButtons.forEach((btn) => {
+      btn.disabled = false;
+    });
   }
 });
 
