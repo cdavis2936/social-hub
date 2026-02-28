@@ -189,6 +189,8 @@ const STORY_IMAGE_DURATION_MS = 5000;
 let storyAdvanceTimer = null;
 let storyProgressTicker = null;
 let lastStoryTouchAt = 0;
+let storyVideoBlobUrl = '';
+let isStoryBlobLoading = false;
 let peerKeys = {};
 let chatSummaries = new Map();
 let blockedUsers = new Set(JSON.parse(localStorage.getItem('blockedUsers') || '[]'));
@@ -2290,7 +2292,7 @@ function resolveStoryMediaSrc(story) {
 
   // Force widely-supported story delivery for mobile devices.
   if ((story?.mediaType === 'video' || baseUrl.includes('/video/upload/')) && baseUrl.includes('/video/upload/')) {
-    return baseUrl.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac,q_auto:good/');
+    return baseUrl.replace('/video/upload/', '/video/upload/f_mp4,vc_h264:baseline,ac_aac,so_0,q_auto:good/');
   }
   if ((story?.mediaType === 'image' || baseUrl.includes('/image/upload/')) && baseUrl.includes('/image/upload/')) {
     return baseUrl.replace('/image/upload/', '/image/upload/f_auto,q_auto/');
@@ -2305,9 +2307,10 @@ function buildStoryVideoCandidates(story) {
 
   const candidates = [];
   if (original.includes('cloudinary.com') && original.includes('/video/upload/')) {
-    candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac,q_auto:good/'));
+    candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264:baseline,ac_aac,so_0,q_auto:good/'));
+    candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264:baseline,ac_aac,so_0/'));
+    candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac,so_0/'));
     candidates.push(original.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac/'));
-    candidates.push(original.replace('/video/upload/', '/video/upload/q_auto:good/'));
   }
   candidates.push(original);
   return [...new Set(candidates)];
@@ -2344,6 +2347,14 @@ function clearStoryPlaybackTimers() {
     clearInterval(storyProgressTicker);
     storyProgressTicker = null;
   }
+}
+
+function clearStoryVideoBlobUrl() {
+  if (!storyVideoBlobUrl) return;
+  try {
+    URL.revokeObjectURL(storyVideoBlobUrl);
+  } catch (_err) {}
+  storyVideoBlobUrl = '';
 }
 
 function goToNextStoryOrClose() {
@@ -2416,6 +2427,8 @@ function renderStoryAt(index) {
   const mediaKey = `${story.id || ''}|${story.mediaType || ''}|${story.mediaUrl || ''}`;
   if (mediaKey !== activeStoryMediaKey) {
     activeStoryMediaKey = mediaKey;
+    isStoryBlobLoading = false;
+    clearStoryVideoBlobUrl();
     storyImageRetryCount = 0;
     storyVideoRetryCount = 0;
     if (storyImageRetryTimer) {
@@ -2487,6 +2500,29 @@ function renderStoryAt(index) {
     api(`/api/stories/${story.id}/view`, { method: 'POST' }).catch((err) => {
       console.warn('Failed to mark story view:', err);
     });
+  }
+}
+
+async function tryLoadStoryVideoViaBlob() {
+  if (!currentStory || isStoryBlobLoading) return false;
+  const source = storyVideoSourceCandidates[storyVideoSourceIndex] || resolveStoryMediaSrc(currentStory);
+  if (!source) return false;
+  isStoryBlobLoading = true;
+  try {
+    const response = await fetch(source, { mode: 'cors', cache: 'no-store' });
+    if (!response.ok) return false;
+    const blob = await response.blob();
+    if (!blob || !String(blob.type || '').startsWith('video/')) return false;
+    clearStoryVideoBlobUrl();
+    storyVideoBlobUrl = URL.createObjectURL(blob);
+    storyVideo.src = storyVideoBlobUrl;
+    storyVideo.load();
+    await storyVideo.play().catch(() => {});
+    return true;
+  } catch (_err) {
+    return false;
+  } finally {
+    isStoryBlobLoading = false;
   }
 }
 
@@ -2584,6 +2620,13 @@ storyVideo?.addEventListener('error', () => {
     }
   }
 
+  tryLoadStoryVideoViaBlob().then((ok) => {
+    if (ok) {
+      const errorOverlay = document.getElementById('story-error-overlay');
+      if (errorOverlay) errorOverlay.style.display = 'none';
+    }
+  });
+
   if (storyVideoRetryCount >= STORY_MEDIA_MAX_RETRIES) {
     console.warn('Story video retry limit reached:', currentStory.mediaUrl);
     // Auto-advance to next story after max retries
@@ -2665,6 +2708,8 @@ function showStoryMediaError(message) {
 
 function closeStory() {
   clearStoryPlaybackTimers();
+  clearStoryVideoBlobUrl();
+  isStoryBlobLoading = false;
   storyModal.classList.add('hidden');
   storyVideo.pause();
   storyVideo.src = '';
