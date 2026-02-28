@@ -1,4 +1,4 @@
-const CACHE_NAME = 'social-hub-v9';
+const CACHE_NAME = 'social-hub-v10';
 const APP_SHELL = [
   '/',
   '/index.html',

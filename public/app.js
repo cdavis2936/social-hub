@@ -188,6 +188,7 @@ let storyVideoSourceIndex = 0;
 const STORY_IMAGE_DURATION_MS = 5000;
 let storyAdvanceTimer = null;
 let storyProgressTicker = null;
+let lastStoryTouchAt = 0;
 let peerKeys = {};
 let chatSummaries = new Map();
 let blockedUsers = new Set(JSON.parse(localStorage.getItem('blockedUsers') || '[]'));
@@ -2458,11 +2459,14 @@ function renderStoryAt(index) {
       storyVideo.src = nextSrc;
       storyVideo.preload = 'metadata';
       forceInlinePlayback(storyVideo, { showControls: false });
+      storyVideo.controls = false;
       storyVideo.muted = true;
       storyVideo.load();
     }
     storyVideo.play().catch(() => {
-      // iOS may block autoplay; user can tap center to play.
+      // Autoplay may be blocked on mobile/PWA; enable manual fallback.
+      storyVideo.controls = true;
+      showStoryMediaError('Tap center to play story');
     });
   } else {
     // Treat as image
@@ -2610,6 +2614,7 @@ storyVideo?.addEventListener('error', () => {
 storyVideo?.addEventListener('loadeddata', () => {
   const errorOverlay = document.getElementById('story-error-overlay');
   if (errorOverlay) errorOverlay.style.display = 'none';
+  storyVideo.controls = false;
 });
 
 storyVideo?.addEventListener('timeupdate', () => {
@@ -2693,11 +2698,12 @@ storyNextBtn?.addEventListener('click', (e) => {
   if (storyViewerIndex < storyViewerList.length - 1) renderStoryAt(storyViewerIndex + 1);
 });
 
-storyContent?.addEventListener('click', (e) => {
-  if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) return;
+function handleStoryContentTap(clientX, target) {
+  if (!storyContent) return;
+  if (target?.closest('button') || target?.closest('input') || target?.closest('textarea')) return;
   const rect = storyContent.getBoundingClientRect();
   if (!rect.width) return;
-  const ratio = (e.clientX - rect.left) / rect.width;
+  const ratio = (clientX - rect.left) / rect.width;
   if (ratio < 0.35) {
     if (storyViewerIndex > 0) renderStoryAt(storyViewerIndex - 1);
     return;
@@ -2707,9 +2713,28 @@ storyContent?.addEventListener('click', (e) => {
     return;
   }
   if (storyVideo.style.display === 'block') {
-    if (storyVideo.paused) storyVideo.play().catch(() => {});
-    else storyVideo.pause();
+    if (storyVideo.paused) {
+      storyVideo.muted = false;
+      storyVideo.play().catch(() => {
+        storyVideo.muted = true;
+        storyVideo.play().catch(() => {});
+      });
+    } else {
+      storyVideo.pause();
+    }
   }
+}
+
+storyContent?.addEventListener('touchend', (e) => {
+  if (!e.changedTouches?.length) return;
+  lastStoryTouchAt = Date.now();
+  e.preventDefault();
+  handleStoryContentTap(e.changedTouches[0].clientX, e.target);
+}, { passive: false });
+
+storyContent?.addEventListener('click', (e) => {
+  if (Date.now() - lastStoryTouchAt < 350) return;
+  handleStoryContentTap(e.clientX, e.target);
 });
 
 // Touch swipe support for story navigation
